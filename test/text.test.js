@@ -106,5 +106,5 @@ test('applyReplacements across inline markup puts the value in the first text ru
 
 test('applyReplacements escapes the new text', () => {
   const doc = buildDocument('<p>a b</p>');
-  assert.equal(applyReplacements(doc, [{ offset: 4, length: 1, value: '<&>' }]), '<p>a &lt;&amp;&gt;</p>');
+  assert.equal(applyReplacements(doc, [{ offset: 5, length: 1, value: '<&>' }]), '<p>a &lt;&amp;&gt;</p>');
 });

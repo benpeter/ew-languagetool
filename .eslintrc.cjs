@@ -14,6 +14,7 @@ module.exports = {
     'no-param-reassign': [2, { props: false }],
     'linebreak-style': ['error', 'unix'],
     'import/extensions': ['error', { js: 'always' }],
+    'import/prefer-default-export': 'off',
   },
   overrides: [{
     files: ['test/**/*.js'],

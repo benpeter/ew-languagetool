@@ -51,7 +51,7 @@ test('loadConfig: a missing site config is an empty config, read-only access is 
 test('loadConfig uses the Helix 6 editor config for upgraded sites', async () => {
   const daFetch = recorder([
     [PING, () => res(200, {}, { 'x-api-upgrade-available': 'true' })],
-    [HLX6, () => res(200, { languagetool: { data: [{ key: 'words', value: 'X' }] } })],
+    [HLX6, () => res(200, { languagetool: [{ key: 'words', value: 'X' }] })],
   ]);
   const result = await loadConfig(daFetch, 'o', 's');
   assert.equal(result.store, 'hlx6');
