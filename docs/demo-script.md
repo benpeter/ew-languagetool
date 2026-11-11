@@ -46,7 +46,7 @@ Open Settings.
 - Each author can add their own premium key here. It stays in their browser and is never written to the site settings.
 - A site can also point to its own LanguageTool server, so text never leaves the company.
 
-If a premium key is set up, check the page again and point at issues marked "(premium)".
+If a premium key is set up, check the page again and point at issues marked "(premium)". Try this right before the demo: on 2026-11-11 the premium API returned no issues for this German page on most calls. If it still does, skip this step and leave the key out of the demo browser.
 
 ## 2:45 Wrap-up (15 seconds)
 

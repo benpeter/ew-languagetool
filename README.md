@@ -80,6 +80,7 @@ All controls are buttons and form fields you can reach with Tab. After a check, 
 - Page metadata is not checked: Experience Workspace doesn't pass it to extensions.
 - Issues don't become Workspace comments. Extensions can't create comments today.
 - Results are a snapshot. After editing, check again.
+- Premium results for German were unstable when tested on 2026-11-11: the same text sometimes came back with no issues at all, even obvious typos, while the free API found them. English premium results were stable. If a German page shows 0 issues with a premium key, use Forget key and check again on the free API.
 
 ## Troubleshooting
 
