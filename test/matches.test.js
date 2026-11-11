@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildDocument } from '../tools/plugins/languagetool/lib/text.js';
 import {
-  classify, prepareMatches, groupBySegment, countByType, matchKey,
+  classify, prepareMatches, groupBySegment, countByType, matchKey, context,
 } from '../tools/plugins/languagetool/lib/matches.js';
 
 const rule = (id, issueType, category) => ({ id, issueType, category: { id: category } });
@@ -64,5 +64,20 @@ test('groupBySegment keeps document order; countByType counts each type', () => 
   assert.deepEqual(groups.map((g) => [g.segment.index, g.matches.length]), [[0, 2], [1, 2]]);
   assert.deepEqual(countByType(list), {
     spelling: 2, grammar: 1, punctuation: 1, style: 0,
+  });
+});
+
+test('context cuts the sentence around a match at word boundaries', () => {
+  const text = 'Die Weine sind zwar nicht ausschließlich regional aus Hessen, aber von Ovinho, einen kleinen Weinhändler.';
+  const start = text.indexOf('Ovinho');
+  const c = context({ segment: { text }, start, end: start + 6 }, 20);
+  assert.equal(c.word, 'Ovinho');
+  assert.equal(c.before, 'Hessen, aber von ');
+  assert.equal(c.after, ', einen kleinen');
+  assert.equal(c.cutStart, true);
+  assert.equal(c.cutEnd, true);
+  const short = context({ segment: { text: 'zu Verfügung' }, start: 0, end: 2 }, 20);
+  assert.deepEqual(short, {
+    before: '', word: 'zu', after: ' Verfügung', cutStart: false, cutEnd: false,
   });
 });
