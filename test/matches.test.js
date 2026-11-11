@@ -14,6 +14,7 @@ test('classify maps LanguageTool rules to four author-facing types', () => {
   assert.equal(classify(match(0, 1, rule('GERMAN_SPELLER_RULE', 'misspelling', 'TYPOS'))), 'spelling');
   assert.equal(classify(match(0, 1, rule('COMMA_PARENTHESIS_WHITESPACE', 'whitespace', 'TYPOGRAPHY'))), 'punctuation');
   assert.equal(classify(match(0, 1, rule('KOMMA_ZWISCHEN', 'typographical', 'PUNCTUATION'))), 'punctuation');
+  assert.equal(classify(match(0, 1, rule('COMMA_IN_FRONT_RELATIVE_CLAUSE', 'uncategorized', 'HILFESTELLUNG_KOMMASETZUNG'))), 'punctuation');
   assert.equal(classify(match(0, 1, rule('VERY_UNIQUE', 'style', 'REDUNDANCY'))), 'style');
   assert.equal(classify(match(0, 1, rule('ZU_ZUR', 'uncategorized', 'CONFUSED_WORDS'))), 'grammar');
   assert.equal(classify(match(0, 1, rule('EN_A_VS_AN', 'misspelling', 'MISC'))), 'grammar');

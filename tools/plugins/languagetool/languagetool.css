@@ -4,6 +4,10 @@
     box-sizing: border-box;
 }
 
+[hidden] {
+    display: none !important;
+}
+
 body {
     margin: 0;
     font-family: var(--s2-font-family, adobe-clean, 'Source Sans Pro', sans-serif);
