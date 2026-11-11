@@ -2,7 +2,7 @@
 import DA_SDK from 'https://da.live/nx/utils/sdk.js';
 import { buildDocument, chunkItems, applyReplacements } from './lib/text.js';
 import {
-  TYPES, prepareMatches, groupBySegment, countByType, matchKey,
+  TYPES, prepareMatches, groupBySegment, countByType, matchKey, context,
 } from './lib/matches.js';
 import { parseSettings, resolveEndpoint, addWord } from './lib/settings.js';
 import { buildBody, check } from './lib/api.js';
@@ -107,19 +107,15 @@ function renderSettings() {
 // ---------------------------------------------------------------------------
 
 function excerpt(match) {
-  const { text } = match.segment;
-  let from = Math.max(0, match.start - 60);
-  let to = Math.min(text.length, match.end + 60);
-  if (from > 0) from = text.indexOf(' ', from) + 1 || from;
-  if (to < text.length) to = text.lastIndexOf(' ', to) > match.end ? text.lastIndexOf(' ', to) : to;
+  const c = context(match);
   return el(
     'p',
     { class: 'excerpt' },
-    from > 0 ? '…' : '',
-    text.slice(from, match.start),
-    el('mark', {}, text.slice(match.start, match.end)),
-    text.slice(match.end, to),
-    to < text.length ? '…' : '',
+    c.cutStart ? '…' : '',
+    c.before,
+    el('mark', {}, c.word),
+    c.after,
+    c.cutEnd ? '…' : '',
   );
 }
 
@@ -246,8 +242,10 @@ function renderResults() {
   if (selection) {
     $('apply').disabled = !fixes.length;
     $('apply').textContent = fixes.length ? `Apply ${fixes.length} ${fixes.length === 1 ? 'fix' : 'fixes'} to the selection` : 'Pick fixes below';
+    const before = state.doc.segments.map((s) => s.text);
     $('preview').textContent = fixes.length
-      ? buildDocument(applyReplacements(state.doc, fixes)).segments.map((s) => s.text).join('\n')
+      ? buildDocument(applyReplacements(state.doc, fixes)).segments
+        .map((s) => s.text).filter((t, i) => t !== before[i]).join('\n')
       : '';
   }
   $('assistant-row').hidden = selection || !matches.length || typeof state.actions.setPrompt !== 'function';
@@ -392,7 +390,8 @@ async function applyFixes() {
 function askAssistant() {
   const lines = currentMatches().slice(0, 40).map((m) => {
     const fix = m.suggestions.length ? ` Suggestion: ${m.suggestions.map((s) => `"${s}"`).join(' or ')}.` : '';
-    return `- "${m.word.trim()}" in "${m.segment.text.slice(Math.max(0, m.start - 40), m.end + 40).trim()}": ${m.message}${fix}`;
+    const c = context(m, 40);
+    return `- "${m.word.trim()}" in "${(c.before + c.word + c.after).trim()}": ${m.message}${fix}`;
   });
   state.actions.setPrompt(
     `LanguageTool found these issues on this page. Please fix the real mistakes and keep names and wording that are intended:\n${lines.join('\n')}`,

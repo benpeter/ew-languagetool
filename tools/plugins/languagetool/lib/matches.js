@@ -65,3 +65,25 @@ export function countByType(matches) {
   matches.forEach((m) => { counts[m.type] += 1; });
   return counts;
 }
+
+/** The text around a match, cut at word boundaries about `radius` characters away. */
+export function context(match, radius = 60) {
+  const { text } = match.segment;
+  let from = Math.max(0, match.start - radius);
+  if (from > 0) {
+    const space = text.indexOf(' ', from);
+    from = space !== -1 && space < match.start ? space + 1 : from;
+  }
+  let to = Math.min(text.length, match.end + radius);
+  if (to < text.length) {
+    const space = text.lastIndexOf(' ', to);
+    to = space > match.end ? space : to;
+  }
+  return {
+    before: text.slice(from, match.start),
+    word: text.slice(match.start, match.end),
+    after: text.slice(match.end, to),
+    cutStart: from > 0,
+    cutEnd: to < text.length,
+  };
+}
