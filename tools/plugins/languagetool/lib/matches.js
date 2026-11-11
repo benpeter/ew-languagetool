@@ -10,7 +10,8 @@ export function classify(match) {
   const { issueType, category } = match.rule;
   const cat = category?.id;
   if (cat === 'TYPOS' || match.type?.typeName === 'UnknownWord') return 'spelling';
-  if (issueType === 'whitespace' || issueType === 'typographical' || PUNCTUATION.has(cat)) return 'punctuation';
+  if (issueType === 'whitespace' || issueType === 'typographical' || PUNCTUATION.has(cat)
+    || /KOMMA|COMMA/.test(cat)) return 'punctuation';
   if (issueType === 'style' || issueType === 'register' || STYLE.has(cat)) return 'style';
   return 'grammar';
 }
