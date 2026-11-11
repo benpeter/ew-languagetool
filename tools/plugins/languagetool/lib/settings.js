@@ -78,6 +78,15 @@ export function resolveEndpoint(settings, credentials) {
   };
 }
 
+/** What the panel shows as the server: where checks really go, given the author's key. */
+export function serverLabel(settings, endpoint) {
+  if (endpoint.error === 'missing-key') return 'LanguageTool Premium, once you add your key';
+  if (endpoint.error) return 'no valid server in the site settings';
+  if (endpoint.kind === 'premium') return 'LanguageTool Premium, with your key';
+  if (endpoint.kind === 'custom') return `${endpoint.host}, this site's own server`;
+  return 'LanguageTool free API';
+}
+
 const toSheet = (data, extra = {}) => ({
   ...extra, total: data.length, limit: data.length, offset: 0, data,
 });

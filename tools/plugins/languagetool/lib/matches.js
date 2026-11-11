@@ -85,3 +85,30 @@ export function context(match, radius = 60) {
     cutEnd: to < text.length,
   };
 }
+
+const PROMPT_LIMIT = 40;
+const quoteList = (values) => {
+  const quoted = values.map((v) => `"${v}"`);
+  return quoted.length > 1 ? `${quoted.slice(0, -1).join(', ')} or ${quoted.at(-1)}` : quoted[0];
+};
+
+/**
+ * A prompt for the Workspace assistant: the flagged words, where they are and the fix.
+ * LanguageTool's messages stay out: some are questions to the author ("Möchten Sie …?").
+ */
+export function assistantPrompt(matches) {
+  const sorted = [...matches].sort((a, b) => a.offset - b.offset);
+  const lines = sorted.slice(0, PROMPT_LIMIT).map((m, i) => {
+    const c = context(m, 40);
+    const excerpt = `${c.cutStart ? '…' : ''}${c.before}${c.word}${c.after}${c.cutEnd ? '…' : ''}`;
+    const fix = m.suggestions.length ? `change to ${quoteList(m.suggestions)}` : `no suggestion (${m.type})`;
+    return `${i + 1}. "${m.word}" in "${excerpt}": ${fix}`;
+  });
+  const rest = sorted.length - lines.length;
+  return [
+    'LanguageTool flagged these spots on this page. Fix the real mistakes. Change only the flagged words, keep names and intended wording, and leave a spot as it is when it is fine.',
+    '',
+    ...lines,
+    ...(rest > 0 ? ['', `${rest} more are not listed. Check the page again after these fixes.`] : []),
+  ].join('\n');
+}

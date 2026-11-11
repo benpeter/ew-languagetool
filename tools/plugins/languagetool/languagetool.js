@@ -1,10 +1,13 @@
 // eslint-disable-next-line import/no-unresolved
 import DA_SDK from 'https://da.live/nx/utils/sdk.js';
+import loadSharedUi from './shared-ui.js';
 import { buildDocument, chunkItems, applyReplacements } from './lib/text.js';
 import {
-  TYPES, prepareMatches, groupBySegment, countByType, matchKey, context,
+  TYPES, prepareMatches, groupBySegment, countByType, matchKey, context, assistantPrompt,
 } from './lib/matches.js';
-import { parseSettings, resolveEndpoint, addWord } from './lib/settings.js';
+import {
+  parseSettings, resolveEndpoint, addWord, serverLabel,
+} from './lib/settings.js';
 import { buildBody, check } from './lib/api.js';
 import { replaceSelection, plainText } from './lib/selection.js';
 import { loadConfig, saveConfig } from './lib/config.js';
@@ -12,17 +15,19 @@ import { loadConfig, saveConfig } from './lib/config.js';
 const KEY_STORE = 'ew-languagetool:premium';
 const CONSENT_STORE = 'ew-languagetool:consent';
 const FREE_PER_MINUTE = 20;
+const ICONS = new URL('./img/', import.meta.url).href;
+const SVG = 'http://www.w3.org/2000/svg';
 const TYPE_LABELS = {
   spelling: 'Spelling', grammar: 'Grammar', punctuation: 'Punctuation', style: 'Style',
 };
 const MESSAGES = {
   'rate-limit': 'LanguageTool\'s limit was reached (the free server allows about 20 checks a minute). Wait a minute and try again.',
   'too-large': 'This text is too long for one check. Check a smaller selection, or use a premium key for longer texts.',
-  auth: 'LanguageTool did not accept the premium key. Check the email and API key in Settings.',
+  auth: 'LanguageTool did not accept your premium key. Remove it in the menu and add it again.',
   'bad-request': 'LanguageTool rejected the request. Check the language and rules in the site settings.',
   server: 'LanguageTool had a problem. Try again later.',
-  'missing-key': 'This site uses LanguageTool premium. Add your email and API key in Settings.',
-  'bad-server': 'The server in the site settings is not a valid https URL.',
+  'missing-key': 'This site uses LanguageTool Premium. Add your premium key to check.',
+  'bad-server': 'The server in the site settings is not a valid https URL. Ask a site admin to fix it.',
   'no-selection': 'Select some text in the document first.',
   'selection-changed': 'The selection changed since the check. Check the selection again.',
   'no-live': 'This editor does not share the page text with extensions. Select text and use Check selection.',
@@ -36,21 +41,43 @@ const state = {
   accepted: new Map(),
   recent: [],
 };
+// DA's shared menu, popover and toast; the panel works without them.
+const ui = { showToast: null, popover: false, menu: null };
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   Object.entries(attrs).forEach(([k, v]) => {
     if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
-    else if (v !== false && v !== undefined) node.setAttribute(k, v === true ? '' : v);
+    else if (v !== false && v !== undefined && v !== null) node.setAttribute(k, v === true ? '' : v);
   });
-  node.append(...children.filter((c) => c !== null && c !== undefined && c !== false));
+  node.append(...children.flat().filter((c) => c !== null && c !== undefined && c !== false));
   return node;
 }
 
+function icon(name) {
+  const svg = document.createElementNS(SVG, 'svg');
+  svg.setAttribute('viewBox', '0 0 20 20');
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS(SVG, 'use');
+  use.setAttribute('href', `${ICONS}${name}.svg#icon`);
+  svg.append(use);
+  return svg;
+}
+
+// Problems and progress stay in the panel; confirmations go to DA's toast when it loaded.
 function setStatus(text, kind = '') {
   const status = $('status');
   status.textContent = text;
-  status.className = `status ${kind}`;
+  status.className = `lt-status ${kind}`;
+}
+
+function notify(text) {
+  if (typeof ui.showToast !== 'function') {
+    setStatus(text, 'ok');
+    return;
+  }
+  setStatus('');
+  ui.showToast({ text });
 }
 
 const readJson = (key) => {
@@ -58,6 +85,16 @@ const readJson = (key) => {
     return JSON.parse(localStorage.getItem(key));
   } catch {
     return null;
+  }
+};
+
+const writeJson = (key, value) => {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
   }
 };
 
@@ -76,30 +113,153 @@ function describeError(error, ep) {
 }
 
 // ---------------------------------------------------------------------------
-// Settings panel
+// Help popovers and the menu (EW Style Guide)
 // ---------------------------------------------------------------------------
 
-function renderSettings() {
-  const { settings } = state;
-  const ep = endpoint();
-  const server = {
-    free: 'LanguageTool free API',
-    premium: 'LanguageTool premium API',
-  }[settings.server] || settings.server;
-  const using = ep.error ? describeError({ code: ep.error }) : `${ep.host} (${ep.kind})`;
-  const rows = [
-    ['Server', server],
-    ['Checks go to', using],
-    ['Language', settings.language === 'auto' ? `auto (${settings.variants.join(', ')})` : settings.language],
-    ['Level', settings.level],
-    ['Disabled rules', settings.disabledRules.join(', ') || 'none'],
-    ['Site dictionary', settings.words.join(', ') || 'empty'],
+const openHelp = () => [...document.querySelectorAll('nx-popover.lt-help-popover')].find((p) => p.open);
+// One overlay at a time: popovers only close on outside clicks and Escape.
+const closeOverlays = () => {
+  openHelp()?.close();
+  ui.menu?.close?.();
+};
+
+/** Explanations sit behind an info button that opens a text-only nx-popover. */
+function help(topic, row, texts) {
+  row.querySelectorAll(':scope > .lt-help, :scope > nx-popover, :scope > .lt-inline-help').forEach((n) => n.remove());
+  if (!ui.popover) {
+    row.append(...texts.map((text) => el('p', { class: 'lt-inline-help' }, text)));
+    return;
+  }
+  const id = `lt-help-${topic.replace(/\W+/g, '-')}`;
+  const trigger = el('button', {
+    type: 'button',
+    id: `${id}-button`,
+    class: 'nx-action-btn-icon nx-btn-sm lt-help',
+    'aria-label': `About ${topic}`,
+    'aria-expanded': 'false',
+    'aria-controls': id,
+  }, icon('s2-icon-infocircle-20-n'));
+  const popover = el('nx-popover', { id, class: 'lt-help-popover' }, texts.map((text) => el('p', {}, text)));
+  popover.scoped = true;
+  trigger.addEventListener('click', () => {
+    if (popover.open) {
+      popover.close();
+      return;
+    }
+    closeOverlays();
+    popover.show({ anchor: row, placement: 'auto' });
+    trigger.setAttribute('aria-expanded', 'true');
+  });
+  popover.addEventListener('close', () => trigger.setAttribute('aria-expanded', 'false'));
+  row.append(trigger, popover);
+}
+
+document.addEventListener('keydown', (event) => {
+  const popover = event.key === 'Escape' && openHelp();
+  if (popover) document.querySelector(`[aria-controls="${popover.id}"]`)?.focus();
+});
+
+function showKeyForm() {
+  closeOverlays();
+  $('key-form').hidden = false;
+  $('lt-user').focus();
+}
+
+function removeKey() {
+  writeJson(KEY_STORE, null);
+  // eslint-disable-next-line no-use-before-define
+  renderHead();
+  notify('Removed your premium key from this browser.');
+  $('lt-options')?.focus();
+}
+
+const configUrl = () => `https://da.live/config#/${state.context.org}/${state.context.repo}/`;
+
+// Adding or removing the key and the site settings are rare, so they sit in a menu.
+function renderMenu() {
+  const items = [credentials()
+    ? { id: 'remove-key', label: 'Remove premium key', description: 'Only from this browser.' }
+    : { id: 'add-key', label: 'Add premium key', description: 'Check with your own LanguageTool Premium account.' }];
+  if (state.canWrite) {
+    items.push({ id: 'site-settings', label: 'Site settings', description: 'Server, language and site dictionary, in a new tab.' });
+  }
+  const run = (id) => {
+    if (id === 'add-key') showKeyForm();
+    if (id === 'remove-key') removeKey();
+    if (id === 'site-settings') window.open(configUrl(), '_blank', 'noopener');
+  };
+  // Update the open menu in place: replacing it while it closes throws in nx-menu.
+  if (ui.menu) {
+    ui.menu.items = items;
+    return;
+  }
+  const slot = $('menu-slot');
+  if (!customElements.get('nx-menu')) {
+    slot.replaceChildren(...items.map((item) => el('button', {
+      type: 'button', class: 'nx-action-btn-quiet nx-btn-sm', onclick: () => run(item.id),
+    }, item.label)));
+    return;
+  }
+  const trigger = el('button', {
+    type: 'button', slot: 'trigger', id: 'lt-options', class: 'nx-action-btn-icon nx-btn-sm', 'aria-label': 'LanguageTool options',
+  }, icon('s2-icon-more-20-n'));
+  const menu = el('nx-menu', { placement: 'below-end' }, trigger);
+  menu.items = items;
+  menu.addEventListener('select', (e) => run(e.detail?.id));
+  // nx-menu doesn't return focus when it closes.
+  menu.addEventListener('close', () => {
+    const { activeElement } = document;
+    const inside = activeElement === menu || menu.contains(activeElement);
+    if (inside && document.hasFocus()) trigger.focus();
+  });
+  trigger.addEventListener('click', () => openHelp()?.close());
+  ui.menu = menu;
+  slot.replaceChildren(menu);
+}
+
+// ---------------------------------------------------------------------------
+// Where checks go
+// ---------------------------------------------------------------------------
+
+const privacyText = (ep) => (ep.kind === 'custom'
+  ? `Checking sends the text you check to ${ep.host}, the LanguageTool server this site set up. Nothing else leaves your browser.`
+  : `Checking sends the text you check to LanguageTool (${ep.host}), run by LanguageTooler GmbH. Nothing else leaves your browser.`);
+
+function siteFacts() {
+  const s = state.settings;
+  const language = s.language === 'auto' ? `detected per check (${s.variants.join(', ')} preferred)` : s.language;
+  const shown = s.words.slice(0, 12).join(', ');
+  const more = s.words.length > 12 ? ` and ${s.words.length - 12} more` : '';
+  return [
+    `Language: ${language}. Level: ${s.level}.${s.disabledRules.length ? ` Rules turned off: ${s.disabledRules.join(', ')}.` : ''}`,
+    s.words.length ? `Site dictionary: ${shown}${more}.` : 'The site dictionary is empty.',
+    'Site admins change these in the languagetool sheet of the site configuration.',
   ];
-  $('site-settings').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]));
-  const creds = credentials();
-  $('lt-user').value = creds?.username || '';
-  $('lt-key').value = creds?.apiKey ? '••••••••' : '';
-  $('forget').disabled = !creds;
+}
+
+function renderHead() {
+  const ep = endpoint();
+  $('server-name').textContent = serverLabel(state.settings, ep);
+  const privacy = ep.host ? [privacyText(ep)] : [];
+  if (ep.kind === 'premium' && state.settings.server === 'free') {
+    privacy.push('The site uses the free API. Your premium key, saved in this browser, sends your checks to LanguageTool Premium instead.');
+  }
+  help('where checks go', $('server-row'), [...privacy, ...siteFacts()]);
+
+  const problem = $('problem');
+  problem.hidden = !ep.error;
+  if (ep.error === 'missing-key') {
+    problem.replaceChildren(
+      el('p', {}, MESSAGES['missing-key']),
+      el('button', { type: 'button', class: 'nx-action-btn-quiet nx-btn-sm', onclick: showKeyForm }, 'Add premium key'),
+    );
+  } else if (ep.error) {
+    problem.replaceChildren(el('p', {}, describeError({ code: ep.error })));
+  }
+  const ready = !ep.error;
+  $('check-page').disabled = !ready || state.busy;
+  $('check-selection').disabled = !ready || state.busy;
+  renderMenu();
 }
 
 // ---------------------------------------------------------------------------
@@ -110,7 +270,7 @@ function excerpt(match) {
   const c = context(match);
   return el(
     'p',
-    { class: 'excerpt' },
+    { class: 'lt-excerpt' },
     c.cutStart ? '…' : '',
     c.before,
     el('mark', {}, c.word),
@@ -138,10 +298,10 @@ async function addToDictionary(word) {
       || await saveConfig(state.actions.daFetch, org, repo, loaded, next);
     if (!saved) throw new Error('save');
     state.settings = parseSettings(next);
-    renderSettings();
+    renderHead();
     // eslint-disable-next-line no-use-before-define
     renderResults();
-    setStatus(`Added “${word}” to the site dictionary.`, 'ok');
+    notify(`Added “${word}” to the site dictionary.`);
   } catch {
     setStatus(`Could not save the site dictionary. Use Ignore instead, or ask a site admin to add “${word}”.`, 'error');
   } finally {
@@ -172,49 +332,59 @@ async function useSuggestion(match, value) {
   }
   try {
     await navigator.clipboard.writeText(value);
-    setStatus(`Copied “${value}”. To apply fixes, select the text in the document and use Check selection.`, 'ok');
+    notify(`Copied “${value}”.`);
   } catch {
-    setStatus('To apply fixes, select the text in the document and use Check selection.');
+    setStatus('Could not copy. To apply fixes, select the text in the document and use Check selection.', 'error');
   }
 }
 
 function matchItem(match) {
+  const selection = state.mode === 'selection';
   const accepted = state.accepted.get(String(match.offset))?.value;
-  const suggestions = match.suggestions.map((value) => el('button', {
-    type: 'button',
-    class: 'suggestion',
-    'aria-pressed': state.mode === 'selection' ? String(accepted === value) : false,
-    title: state.mode === 'selection' ? 'Use this fix' : 'Copy',
-    onclick: () => useSuggestion(match, value),
-  }, value === ' ' ? '(space)' : value || '(remove)'));
+  const suggestions = match.suggestions.map((value) => {
+    const label = value === ' ' ? '(space)' : value || '(remove)';
+    const on = selection && accepted === value;
+    return el('button', {
+      type: 'button',
+      class: `nx-action-btn nx-btn-sm${on ? ' is-active' : ''}`,
+      'aria-pressed': selection ? String(on) : false,
+      'aria-label': selection ? `Use “${label}”` : `Copy “${label}”`,
+      onclick: () => useSuggestion(match, value),
+    }, label);
+  });
+  const word = match.word.trim();
   const tools = [
     el('button', {
       type: 'button',
-      class: 'quiet',
+      class: 'nx-action-btn-quiet nx-btn-sm',
+      'aria-label': `Ignore “${word}” on this page`,
       onclick: () => {
         state.ignored.add(matchKey(match));
         // eslint-disable-next-line no-use-before-define
         renderResults();
-        setStatus(`Ignoring “${match.word}” on this page until you close the panel.`);
+        notify(`Ignoring “${word}” until you close the panel.`);
       },
-    }, 'Ignore on this page'),
+    }, 'Ignore'),
   ];
   if (match.type === 'spelling' && state.canWrite) {
     tools.push(el('button', {
-      type: 'button', class: 'quiet', onclick: () => addToDictionary(match.word.trim()),
-    }, 'Add to site dictionary'));
+      type: 'button',
+      class: 'nx-action-btn-quiet nx-btn-sm',
+      'aria-label': `Add “${word}” to the site dictionary`,
+      onclick: () => addToDictionary(word),
+    }, 'Add to dictionary'));
   }
   return el(
     'li',
-    { class: `match ${match.type}` },
-    el('p', { class: 'message' }, el('span', { class: 'badge' }, TYPE_LABELS[match.type]), ' ', match.message),
+    { class: `lt-match ${match.type}` },
+    el('p', { class: 'lt-message' }, el('span', { class: 'lt-badge' }, TYPE_LABELS[match.type]), ' ', match.message),
     excerpt(match),
-    suggestions.length ? el('div', { class: 'suggestions', role: 'group', 'aria-label': 'Suggestions' }, ...suggestions) : null,
+    suggestions.length ? el('div', { class: 'lt-suggestions', role: 'group', 'aria-label': selection ? 'Fixes' : 'Suggestions, click to copy' }, suggestions) : null,
     el(
       'div',
-      { class: 'tools' },
-      el('span', { class: 'rule', title: match.rule.description }, match.rule.id, match.rule.premium ? ' (premium)' : ''),
-      ...tools,
+      { class: 'lt-tools' },
+      el('span', { class: 'lt-rule', title: match.rule.description }, match.rule.id, match.rule.premium ? ' (premium)' : ''),
+      tools,
     ),
   );
 }
@@ -223,11 +393,18 @@ function renderResults() {
   const matches = currentMatches();
   const counts = countByType(matches);
   const selection = state.mode === 'selection';
+  const where = selection ? 'in the selection' : 'on this page';
   $('results').hidden = false;
-  $('results-title').textContent = `${matches.length} ${matches.length === 1 ? 'issue' : 'issues'} ${selection ? 'in the selection' : 'on this page'}`;
+  $('results-title').textContent = matches.length
+    ? `${matches.length} ${matches.length === 1 ? 'issue' : 'issues'} ${where}`
+    : `No issues ${where}`;
+  help('the results', $('results-row'), selection
+    ? ['Pick the fixes you want, then apply them to the selection.', 'Ignore hides an issue until you close the panel. Add to dictionary accepts a word for every author on this site.']
+    : ['To fix issues, select the text in the document and use Check selection. Clicking a suggestion here copies it.', 'Ignore hides an issue until you close the panel. Add to dictionary accepts a word for every author on this site.']);
   const time = state.checkedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  $('results-meta').textContent = `${state.languageLabel} · checked at ${time}${selection ? '' : ' · check again after editing'}`;
+  $('results-meta').textContent = `${state.languageLabel} · checked at ${time}`;
   $('counts').replaceChildren(...TYPES.map((t) => el('li', { class: t }, `${TYPE_LABELS[t]} `, el('strong', {}, String(counts[t])))));
+  $('counts').hidden = !matches.length;
 
   const groups = groupBySegment(matches);
   $('groups').replaceChildren(...groups.map(({ segment, matches: list }) => {
@@ -235,22 +412,20 @@ function renderResults() {
     const title = `${segment.kind === 'block' ? `${segment.label} block` : segment.label}: “${start}…”`;
     return el(
       'section',
-      { class: 'group' },
+      { class: 'lt-group' },
       el('h3', {}, title),
-      el('ul', { class: 'matches' }, ...list.map(matchItem)),
+      el('ul', { class: 'lt-matches' }, list.map(matchItem)),
     );
   }));
 
   const fixes = [...state.accepted.values()];
-  $('apply-bar').hidden = !selection;
-  if (selection) {
-    $('apply').disabled = !fixes.length;
-    $('apply').textContent = fixes.length ? `Apply ${fixes.length} ${fixes.length === 1 ? 'fix' : 'fixes'} to the selection` : 'Pick fixes below';
+  // The apply bar shows once a fix is picked, with the changed paragraphs as a preview.
+  $('apply-bar').hidden = !selection || !fixes.length;
+  if (selection && fixes.length) {
+    $('apply').textContent = `Apply ${fixes.length} ${fixes.length === 1 ? 'fix' : 'fixes'}`;
     const before = state.doc.segments.map((s) => s.text);
-    $('preview').textContent = fixes.length
-      ? buildDocument(applyReplacements(state.doc, fixes)).segments
-        .map((s) => s.text).filter((t, i) => t !== before[i]).join('\n')
-      : '';
+    $('preview').textContent = buildDocument(applyReplacements(state.doc, fixes)).segments
+      .map((s) => s.text).filter((t, i) => t !== before[i]).join('\n');
   }
   $('assistant-row').hidden = selection || !matches.length || typeof state.actions.setPrompt !== 'function';
 }
@@ -281,15 +456,13 @@ function readLiveDocument() {
 function consentNeeded(ep) {
   const given = readJson(CONSENT_STORE) || [];
   if (given.includes(ep.host)) return Promise.resolve(true);
-  $('notice-text').textContent = ep.kind === 'custom'
-    ? `Checking sends the text you check to ${ep.host}, the LanguageTool server this site set up. Nothing else leaves your browser.`
-    : `Checking sends the text you check to LanguageTool (${ep.host}), a service by LanguageTooler GmbH. Nothing else leaves your browser.`;
+  $('notice-text').textContent = privacyText(ep);
   $('notice').hidden = false;
   $('notice-ok').focus();
   return new Promise((resolve) => {
     const done = (ok) => {
       $('notice').hidden = true;
-      if (ok) localStorage.setItem(CONSENT_STORE, JSON.stringify([...given, ep.host]));
+      if (ok) writeJson(CONSENT_STORE, [...given, ep.host]);
       resolve(ok);
     };
     $('notice-ok').onclick = () => done(true);
@@ -303,19 +476,29 @@ function tooFast(ep, requests) {
   return ep.kind === 'free' && state.recent.length + requests > FREE_PER_MINUTE;
 }
 
+function setBusy(busy) {
+  state.busy = busy;
+  $('check-page').disabled = busy;
+  $('check-selection').disabled = busy;
+}
+
+const spinning = (text) => {
+  $('status').replaceChildren(el('span', { class: 'nx-loading-spinner', 'aria-hidden': 'true' }), text);
+  $('status').className = 'lt-status';
+};
+
 async function runCheck(mode) {
+  closeOverlays();
   const ep = endpoint();
   if (ep.error) {
     setStatus(describeError({ code: ep.error }), 'error');
-    $('settings').open = true;
     return;
   }
   if (!(await consentNeeded(ep))) {
     setStatus('Nothing was sent.');
     return;
   }
-  $('check-page').disabled = true;
-  $('check-selection').disabled = true;
+  setBusy(true);
   try {
     let html;
     if (mode === 'selection') {
@@ -325,7 +508,7 @@ async function runCheck(mode) {
         throw new Error('no-selection');
       }
     } else {
-      setStatus('Reading the page…');
+      spinning('Reading the page…');
       ({ html } = await readLiveDocument());
     }
     const doc = buildDocument(html);
@@ -340,7 +523,7 @@ async function runCheck(mode) {
     const raw = [];
     let language;
     for (let i = 0; i < chunks.length; i += 1) {
-      setStatus(chunks.length > 1 ? `Checking part ${i + 1} of ${chunks.length}…` : 'Checking…');
+      spinning(chunks.length > 1 ? `Checking part ${i + 1} of ${chunks.length}…` : 'Checking…');
       state.recent.push(Date.now());
       // Requests run one after the other to stay within LanguageTool's limits.
       // eslint-disable-next-line no-await-in-loop
@@ -353,17 +536,15 @@ async function runCheck(mode) {
       mode, doc, raw, html, checkedAt: new Date(), accepted: new Map(),
     });
     state.languageLabel = state.settings.language === 'auto' && language?.detectedLanguage
-      ? `Language: ${language.name} (detected)`
-      : `Language: ${language?.name || state.settings.language}`;
+      ? `${language.name} (detected)`
+      : language?.name || state.settings.language;
+    setStatus('');
     renderResults();
-    const count = currentMatches().length;
-    setStatus(count ? `Found ${count} ${count === 1 ? 'issue' : 'issues'}.` : 'No issues found.', 'ok');
     $('results-title').focus();
   } catch (error) {
     setStatus(describeError(error, ep), 'error');
   } finally {
-    $('check-page').disabled = false;
-    $('check-selection').disabled = false;
+    setBusy(false);
   }
 }
 
@@ -388,48 +569,49 @@ async function applyFixes() {
   }
   state.accepted = new Map();
   $('results').hidden = true;
-  setStatus(`Applied ${fixes.length} ${fixes.length === 1 ? 'fix' : 'fixes'}.`, 'ok');
+  notify(`Applied ${fixes.length} ${fixes.length === 1 ? 'fix' : 'fixes'}.`);
 }
 
 function askAssistant() {
-  const lines = currentMatches().slice(0, 40).map((m) => {
-    const fix = m.suggestions.length ? ` Suggestion: ${m.suggestions.map((s) => `"${s}"`).join(' or ')}.` : '';
-    const c = context(m, 40);
-    return `- "${m.word.trim()}" in "${(c.before + c.word + c.after).trim()}": ${m.message}${fix}`;
-  });
-  state.actions.setPrompt(
-    `LanguageTool found these issues on this page. Please fix the real mistakes and keep names and wording that are intended:\n${lines.join('\n')}`,
-    { autoSend: false },
-  );
-  setStatus('Sent the list to the Workspace assistant. Review the prompt there before sending.');
+  state.actions.setPrompt(assistantPrompt(currentMatches()), { autoSend: false });
+  notify('Added the list to the assistant. Review the prompt before you send it.');
 }
 
-function wireSettings() {
+function wireKeyForm() {
   $('key-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const username = $('lt-user').value.trim();
     const apiKey = $('lt-key').value.trim();
-    const existing = credentials();
-    const key = apiKey === '••••••••' && existing ? existing.apiKey : apiKey;
-    if (!username || !key) return;
-    localStorage.setItem(KEY_STORE, JSON.stringify({ username, apiKey: key }));
-    renderSettings();
-    setStatus('Saved your premium key in this browser.', 'ok');
+    if (!username || !apiKey) return;
+    if (!writeJson(KEY_STORE, { username, apiKey })) {
+      setStatus('This browser blocks storage for the panel, so the key can\'t be saved.', 'error');
+      return;
+    }
+    $('key-form').reset();
+    $('key-form').hidden = true;
+    renderHead();
+    notify('Saved your premium key in this browser.');
+    $('check-page').focus();
   });
-  $('forget').addEventListener('click', () => {
-    localStorage.removeItem(KEY_STORE);
-    renderSettings();
-    setStatus('Removed your premium key from this browser.', 'ok');
+  $('key-cancel').addEventListener('click', () => {
+    $('key-form').reset();
+    $('key-form').hidden = true;
+    $('lt-options')?.focus();
   });
+  help('the premium key', $('key-title'), [
+    'Each author uses their own LanguageTool account. Premium finds more issues and checks longer texts.',
+    'The key stays in this browser and goes only to api.languagetoolplus.com, never to the site configuration.',
+  ]);
 }
 
 (async function init() {
-  const sdk = await DA_SDK;
+  const [sdk, shared] = await Promise.all([DA_SDK, loadSharedUi().catch(() => ({}))]);
+  ui.showToast = shared.showToast;
+  ui.popover = !!customElements.get('nx-popover');
   Object.assign(state, {
     context: sdk.context, actions: sdk.actions, capabilities: sdk.capabilities,
   });
   const { org, repo } = sdk.context;
-  $('config-link').href = `https://da.live/config#/${org}/${repo}/`;
   try {
     const { config, canWrite } = await loadConfig(sdk.actions.daFetch, org, repo);
     state.settings = parseSettings(config);
@@ -438,13 +620,15 @@ function wireSettings() {
     state.settings = parseSettings(null);
     state.canWrite = false;
   }
-  renderSettings();
-  wireSettings();
+  renderHead();
+  wireKeyForm();
+  help('checking', $('check-row'), [
+    'Check page lists the issues on the whole page. To fix them, select the text in the document and use Check selection.',
+    'Checks only run when you click.',
+  ]);
   $('check-page').addEventListener('click', () => runCheck('page'));
   $('check-selection').addEventListener('click', () => runCheck('selection'));
   $('apply').addEventListener('click', applyFixes);
   $('assistant').addEventListener('click', askAssistant);
-  $('check-page').disabled = false;
-  $('check-selection').disabled = false;
-  setStatus('Check the whole page, or select text in the document and check the selection to fix it.');
+  setStatus('');
 }());

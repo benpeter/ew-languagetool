@@ -6,64 +6,80 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="referrer" content="no-referrer">
     <link rel="icon" href="data:,">
+    <script type="importmap">
+      { "imports": { "da-lit": "https://da.live/nx2/deps/lit/dist/index.js" } }
+    </script>
     <link rel="stylesheet" href="https://da.live/nx2/styles/styles.css">
+    <link rel="stylesheet" href="https://da.live/nx2/styles/buttons.css">
+    <link rel="stylesheet" href="https://da.live/nx2/styles/form.css">
+    <link rel="stylesheet" href="https://da.live/nx2/styles/spinner.css">
     <link rel="stylesheet" href="./languagetool.css">
     <script src="https://da.live/nx/utils/sdk.js" type="module"></script>
     <script src="./languagetool.js" type="module"></script>
   </head>
   <body>
-    <main id="app">
-      <div class="actions">
-        <button type="button" id="check-page" class="primary" disabled>Check page</button>
-        <button type="button" id="check-selection" disabled>Check selection</button>
-      </div>
+    <main id="app" class="lt">
+      <h1 class="lt-vh">LanguageTool</h1>
 
-      <section id="notice" class="notice" hidden aria-labelledby="notice-title">
-        <h2 id="notice-title">Before the first check</h2>
-        <p id="notice-text"></p>
-        <div class="row">
-          <button type="button" id="notice-ok" class="primary">Continue</button>
-          <button type="button" id="notice-cancel">Cancel</button>
+      <section class="lt-head">
+        <div class="lt-title">
+          <div id="server-row" class="lt-row">
+            <p>Checks go to <strong id="server-name">…</strong></p>
+          </div>
+          <span id="menu-slot"></span>
         </div>
+        <div id="problem" class="lt-warn" hidden></div>
       </section>
 
-      <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
+      <section class="lt-check">
+        <div id="check-row" class="lt-row">
+          <button type="button" id="check-page" class="nx-form-btn-primary" disabled>Check page</button>
+          <button type="button" id="check-selection" class="nx-form-btn-secondary" disabled>Check selection</button>
+        </div>
+        <div id="notice" class="lt-callout" hidden>
+          <p id="notice-text"></p>
+          <div class="lt-row">
+            <button type="button" id="notice-ok" class="nx-form-btn-primary">Continue</button>
+            <button type="button" id="notice-cancel" class="nx-form-btn-secondary">Cancel</button>
+          </div>
+        </div>
+        <p id="status" class="lt-status" role="status">Loading…</p>
+      </section>
+
+      <form id="key-form" class="lt-key" hidden>
+        <div id="key-title" class="lt-row">
+          <h2>Premium key</h2>
+        </div>
+        <label class="nx-form-field">LanguageTool login email
+          <input id="lt-user" class="nx-input" type="email" autocomplete="off" required>
+        </label>
+        <label class="nx-form-field">API key
+          <input id="lt-key" class="nx-input" type="password" autocomplete="off" spellcheck="false" required>
+        </label>
+        <div class="lt-row">
+          <button type="submit" id="key-save" class="nx-form-btn-primary">Save key</button>
+          <button type="button" id="key-cancel" class="nx-form-btn-secondary">Cancel</button>
+          <a href="https://languagetool.org/editor/settings/access-tokens" target="_blank" rel="noopener">Get an API key</a>
+        </div>
+      </form>
 
       <section id="results" hidden aria-labelledby="results-title">
-        <h2 id="results-title" tabindex="-1"></h2>
-        <p id="results-meta" class="meta"></p>
-        <ul id="counts" class="counts"></ul>
-        <div id="apply-bar" class="apply-bar" hidden>
-          <p id="preview" class="preview"></p>
-          <button type="button" id="apply" class="primary">Apply fixes to selection</button>
+        <div id="results-row" class="lt-row">
+          <h2 id="results-title" tabindex="-1"></h2>
+        </div>
+        <p id="results-meta" class="lt-meta"></p>
+        <ul id="counts" class="lt-counts"></ul>
+        <div id="apply-bar" class="lt-apply" hidden>
+          <p id="preview" class="lt-preview"></p>
+          <button type="button" id="apply" class="nx-form-btn-primary">Apply fixes</button>
         </div>
         <div id="groups"></div>
-        <p id="assistant-row" class="row" hidden>
-          <button type="button" id="assistant">Ask the Workspace assistant to fix these</button>
+        <p id="assistant-row" hidden>
+          <button type="button" id="assistant" class="nx-form-btn-secondary">Ask the assistant to fix these</button>
         </p>
       </section>
 
-      <details id="settings" class="settings">
-        <summary>Settings</summary>
-        <h2>This site</h2>
-        <dl id="site-settings"></dl>
-        <p><a id="config-link" target="_blank" rel="noopener">Edit site settings</a> (sheet <code>languagetool</code>)</p>
-        <h2>Your LanguageTool premium key</h2>
-        <p class="meta">Optional. Stored only in this browser and sent only to api.languagetoolplus.com, never to the site config.</p>
-        <form id="key-form">
-          <label for="lt-user">LanguageTool login email</label>
-          <input id="lt-user" type="email" autocomplete="off" required>
-          <label for="lt-key">API key</label>
-          <input id="lt-key" type="password" autocomplete="off" required>
-          <p class="meta">Find it at <a href="https://languagetool.org/editor/settings/access-tokens" target="_blank" rel="noopener">languagetool.org access tokens</a>.</p>
-          <div class="row">
-            <button type="submit">Save key</button>
-            <button type="button" id="forget">Forget key</button>
-          </div>
-        </form>
-      </details>
-
-      <footer class="credit">
+      <footer class="lt-credit">
         Powered by <a href="https://languagetool.org" target="_blank" rel="noopener">LanguageTool</a>
       </footer>
     </main>
