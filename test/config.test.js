@@ -48,24 +48,32 @@ test('loadConfig: a missing site config is an empty config, read-only access is 
   assert.equal(result.canWrite, false);
 });
 
-test('loadConfig uses the Helix 6 editor config for upgraded sites', async () => {
+test('loadConfig uses the Helix 6 editor config for upgraded sites; it can be written', async () => {
+  const raw = { library: [{ title: 'X' }], languagetool: [{ key: 'words', value: 'X' }], flags: { a: 1 } };
   const daFetch = recorder([
     [PING, () => res(200, {}, { 'x-api-upgrade-available': 'true' })],
-    [HLX6, () => res(200, { languagetool: [{ key: 'words', value: 'X' }] })],
+    [HLX6, () => res(200, raw)],
   ]);
   const result = await loadConfig(daFetch, 'o', 's');
   assert.equal(result.store, 'hlx6');
+  assert.equal(result.canWrite, true);
   assert.deepEqual(result.config.languagetool.data, [{ key: 'words', value: 'X' }]);
+  assert.deepEqual(result.raw, raw);
 });
 
 test('saveConfig writes the whole config back to the store it came from', async () => {
   const daFetch = recorder([[LEGACY, () => res(200, {})]]);
-  assert.equal(await saveConfig(daFetch, 'o', 's', 'legacy', legacyConfig), true);
+  assert.equal(await saveConfig(daFetch, 'o', 's', { store: 'legacy' }, legacyConfig), true);
   const { opts } = daFetch.calls[0];
   assert.equal(opts.method, 'PUT');
   assert.deepEqual(JSON.parse(opts.body.get('config')), legacyConfig);
+});
 
+test('saveConfig on Helix 6 changes only the languagetool sheet of the raw config', async () => {
+  const raw = { library: [{ title: 'X' }], flags: { a: 1 } };
+  const config = { languagetool: { data: [{ key: 'words', value: 'Y' }] } };
   const hlx6 = recorder([[HLX6, () => res(204, {})]]);
-  assert.equal(await saveConfig(hlx6, 'o', 's', 'hlx6', legacyConfig), true);
+  assert.equal(await saveConfig(hlx6, 'o', 's', { store: 'hlx6', raw }, config), true);
   assert.equal(hlx6.calls[0].opts.method, 'POST');
+  assert.deepEqual(JSON.parse(hlx6.calls[0].opts.body), { ...raw, languagetool: [{ key: 'words', value: 'Y' }] });
 });
