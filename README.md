@@ -62,11 +62,11 @@ Never put an API key in the site configuration. Everyone who can read the config
 
 ## What leaves your browser
 
-When you click Check page or Check selection, the panel sends the text of the page or selection to the server above, with the HTML tags marked so LanguageTool ignores them. Text in code, `metadata` and `section-metadata` blocks is not checked. With a premium key, your login email and API key go along with each request, to `api.languagetoolplus.com` only; they are never sent to a self-hosted server.
+When you click Check page or Check selection, the panel sends the text of the page or selection to the server above. HTML tags, link and image URLs and the text of code, `metadata` and `section-metadata` blocks are not sent: the panel replaces them with short placeholders that tell LanguageTool where paragraphs end. Block names are not sent either. With a premium key, your login email and API key go along with each request, to `api.languagetoolplus.com` only; they are never sent to a self-hosted server.
 
 Nothing is sent while you type, and nothing is sent to anyone else. LanguageTool says it doesn't store texts sent to its API and runs its servers in Germany ([proofreading API page](https://languagetool.org/proofreading-api)).
 
-The premium key is stored in your browser's local storage for this extension only. Forget key in Settings removes it.
+The premium key is stored in your browser's local storage for the origin the panel is served from. Forget key in Settings removes it. Any code served from that origin can read it, so only use a copy you trust (see [Deploy your own copy](#deploy-your-own-copy)).
 
 ## Keyboard and accessibility
 

@@ -1,5 +1,5 @@
 // Site settings live in a `languagetool` sheet of the DA site config (key/value rows).
-// Personal premium credentials never go there; see credentials.js.
+// Personal premium keys never go there: each author keeps theirs in the browser.
 
 export const SHEET = 'languagetool';
 

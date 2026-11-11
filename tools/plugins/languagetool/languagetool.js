@@ -11,7 +11,7 @@ import { loadConfig, saveConfig } from './lib/config.js';
 
 const KEY_STORE = 'ew-languagetool:premium';
 const CONSENT_STORE = 'ew-languagetool:consent';
-const FREE_PER_MINUTE = 15;
+const FREE_PER_MINUTE = 20;
 const TYPE_LABELS = {
   spelling: 'Spelling', grammar: 'Grammar', punctuation: 'Punctuation', style: 'Style',
 };
@@ -127,14 +127,16 @@ function currentMatches() {
 }
 
 async function addToDictionary(word) {
+  if (state.saving) return;
+  state.saving = true;
   setStatus(`Adding “${word}” to the site dictionary…`);
   try {
     const { org, repo } = state.context;
-    const { config, store } = await loadConfig(state.actions.daFetch, org, repo);
-    const next = addWord(config, word);
-    if (next !== config && !(await saveConfig(state.actions.daFetch, org, repo, store, next))) {
-      throw new Error('save');
-    }
+    const loaded = await loadConfig(state.actions.daFetch, org, repo);
+    const next = addWord(loaded.config, word);
+    const saved = next === loaded.config
+      || await saveConfig(state.actions.daFetch, org, repo, loaded, next);
+    if (!saved) throw new Error('save');
     state.settings = parseSettings(next);
     renderSettings();
     // eslint-disable-next-line no-use-before-define
@@ -142,6 +144,8 @@ async function addToDictionary(word) {
     setStatus(`Added “${word}” to the site dictionary.`, 'ok');
   } catch {
     setStatus(`Could not save the site dictionary. Use Ignore instead, or ask a site admin to add “${word}”.`, 'error');
+  } finally {
+    state.saving = false;
   }
 }
 
@@ -293,10 +297,10 @@ function consentNeeded(ep) {
   });
 }
 
-function throttled(ep) {
+function tooFast(ep, requests) {
   const now = Date.now();
   state.recent = state.recent.filter((t) => now - t < 60000);
-  return ep.kind === 'free' && state.recent.length >= FREE_PER_MINUTE;
+  return ep.kind === 'free' && state.recent.length + requests > FREE_PER_MINUTE;
 }
 
 async function runCheck(mode) {
@@ -327,7 +331,7 @@ async function runCheck(mode) {
     const doc = buildDocument(html);
     if (!doc.segments.length) throw new Error(mode === 'selection' ? 'no-selection' : 'no-live');
     const chunks = chunkItems(doc.items, ep.maxChars);
-    if (throttled(ep) || (ep.kind === 'free' && state.recent.length + chunks.length > 20)) throw new Error('too-fast');
+    if (tooFast(ep, chunks.length)) throw new Error('too-fast');
 
     // A selection often starts mid-sentence; don't ask for a capital letter there.
     const settings = mode === 'selection'

@@ -38,11 +38,9 @@ export function prepareMatches(doc, matches, base, { words = [], ignored = new S
       length: m.length,
       type,
       message: m.message,
-      shortMessage: m.shortMessage || '',
       rule: {
         id: m.rule.id,
         description: m.rule.description || '',
-        category: m.rule.category?.name || '',
         premium: !!m.rule.isPremium,
       },
       suggestions: (m.replacements || []).slice(0, 3).map((r) => r.value),

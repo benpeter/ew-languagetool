@@ -10,8 +10,6 @@ const BLOCK = new Set([
 ]);
 const SKIP_TAGS = new Set(['code', 'pre', 'script', 'style', 'template', 'textarea']);
 const SKIP_BLOCKS = new Set(['metadata', 'section-metadata', 'library-metadata']);
-// Wrappers the editor adds around content; their children are the real segments.
-const TRANSPARENT = new Set(['default-content-wrapper']);
 const KINDS = {
   h1: 'heading',
   h2: 'heading',
@@ -29,18 +27,18 @@ const LABELS = {
   heading: 'Heading', paragraph: 'Paragraph', list: 'List', quote: 'Quote', table: 'Table', other: 'Text',
 };
 const ENTITIES = {
-  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0',
+  amp: '&', lt: '<', gt: '>', quot: '"', nbsp: '\u00a0',
 };
+// What LanguageTool gets instead of a tag or of text it should not check.
+const STAND_IN = '<x>';
 
-const decode = (s) => s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (all, e) => {
-  if (e[0] === '#') {
-    const code = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
-    return Number.isNaN(code) ? all : String.fromCodePoint(code);
-  }
-  return ENTITIES[e.toLowerCase()] ?? all;
-});
-
-export const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const decode = (s) => s.replace(/&(amp|lt|gt|quot|nbsp);/g, (all, e) => ENTITIES[e]);
+const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const blockName = (text) => text.trim().toLowerCase().replace(/\s*\(.*\)$/, '').replace(/\s+/g, '-');
+const labelOf = (name) => {
+  const label = name.replace(/-/g, ' ');
+  return label[0].toUpperCase() + label.slice(1);
+};
 
 function parseTag(raw) {
   if (raw.startsWith('<!--')) return { comment: true };
@@ -66,18 +64,17 @@ function tokens(html) {
 }
 
 function describe(tag) {
-  if (tag.name === 'div' && tag.classes.length) {
-    const label = tag.classes[0].replace(/-/g, ' ');
-    return { kind: 'block', label: label[0].toUpperCase() + label.slice(1) };
-  }
+  if (tag.name === 'div' && tag.classes.length) return { kind: 'block', label: labelOf(tag.classes[0]) };
   const kind = KINDS[tag.name] || 'other';
   return { kind, label: LABELS[kind] };
 }
 
 /**
- * @param {string} html editor HTML: a live document (<main>...) or a selection fragment
+ * @param {string} html editor HTML: a live document (<main>, blocks as divs)
+ *   or a selection (blocks as tables whose first row names the block)
  * @returns {{ items: object[], runs: object[], segments: object[] }}
- *   items: LanguageTool annotation items; `end` marks where a request may be cut.
+ *   items: LanguageTool annotation items. Markup items carry a stand-in as
+ *     `markup` and the original as `html`; `end` marks where a request may be cut.
  *   runs: text items with their offsets in the annotation string and in their segment.
  *   segments: top-level paragraphs, headings, lists and blocks with their plain text.
  */
@@ -85,97 +82,134 @@ export function buildDocument(html) {
   const items = [];
   const runs = [];
   const segments = [];
-  const stack = []; // { name, transparent, skip, root }
+  const stack = []; // { name, skip, root, table, nameRowOf }
   let rootDepth = 0;
   let offset = 0;
   let segment = null;
   let pendingBreak = false;
   let skip = 0;
 
-  const depth = () => stack.filter((e) => !e.transparent).length;
   const push = (item) => {
     items.push(item);
     offset += (item.text ?? item.markup).length;
   };
-  const openSegment = (info) => {
-    segment = { ...info, text: '' };
-    segments.push(segment);
-    pendingBreak = false;
-  };
+  const markup = (original, interpretAs) => push({
+    markup: STAND_IN, html: original, ...(interpretAs ? { interpretAs } : {}),
+  });
 
-  tokens(html).forEach((token) => {
-    if ('text' in token) {
-      if (skip) {
-        push({ markup: token.text });
-      } else if (!segment && !token.text.trim()) {
-        push({ markup: token.text });
-      } else {
-        if (!segment) openSegment({ kind: 'paragraph', label: 'Text', loose: true });
-        const text = decode(token.text);
-        if (pendingBreak && segment.text) segment.text += '\n';
-        pendingBreak = false;
-        runs.push({
-          start: offset,
-          end: offset + text.length,
-          segment,
-          segStart: segment.text.length,
-          item: items.length,
-        });
-        segment.text += text;
-        push({ text });
-      }
-    } else if (token.tag.comment) {
-      push({ markup: token.markup });
-    } else {
-      const { tag } = token;
-      const item = { markup: token.markup };
-      if (tag.name === 'br') item.interpretAs = '\n';
-      else if (BLOCK.has(tag.name)) item.interpretAs = '\n\n';
-      if (segment && (BLOCK.has(tag.name) || tag.name === 'br')) pendingBreak = true;
-
+  const list = tokens(html);
+  // Rows per table: a selection inside one cell arrives as a one-row table.
+  const rowCounts = new Map();
+  const open = [];
+  list.forEach(({ tag }, i) => {
+    if (tag?.name === 'table') {
       if (tag.closing) {
-        const at = stack.map((e) => e.name).lastIndexOf(tag.name);
-        if (at !== -1) {
-          const closed = stack.splice(at);
-          if (closed.some((e) => e.skip)) skip = stack.filter((e) => e.skip).length;
-          if (closed.some((e) => e.root)) {
-            segment = null;
-            item.end = true;
-          }
-        }
-        push(item);
+        open.pop();
       } else {
-        if (tag.name === 'main') rootDepth = depth() + 2;
-        const entry = {
-          name: tag.name,
-          transparent: tag.name === 'div' && TRANSPARENT.has(tag.classes[0]),
-          skip: SKIP_TAGS.has(tag.name) || (tag.name === 'div' && SKIP_BLOCKS.has(tag.classes[0])),
-        };
-        if (!entry.transparent && depth() === rootDepth && tag.name !== 'main') {
-          if (segment?.loose) {
-            const prev = items[items.length - 1];
-            if (prev) prev.end = true;
-          }
-          entry.root = true;
-          openSegment(describe(tag));
-        }
-        push(item);
-        if (!tag.empty) {
-          stack.push(entry);
-          if (entry.skip) skip += 1;
-        } else if (entry.root) {
-          segment = null;
-          item.end = true;
-        }
+        open.push(i);
+        rowCounts.set(i, 0);
       }
+    } else if (tag?.name === 'tr' && !tag.closing && open.length) {
+      const top = open[open.length - 1];
+      rowCounts.set(top, rowCounts.get(top) + 1);
     }
   });
 
-  const kept = segments.filter((s) => s.text.trim());
-  kept.forEach((s, index) => {
-    s.index = index;
-    delete s.loose;
+  list.forEach((token, index) => {
+    if ('text' in token) {
+      const table = stack.findLast((e) => e.table);
+      if (table?.naming) table.blockText += decode(token.text);
+      if (skip || (!segment && !token.text.trim())) {
+        markup(token.text);
+        return;
+      }
+      if (!segment) {
+        segment = { kind: 'paragraph', label: 'Text', text: '' };
+        segments.push(segment);
+      }
+      const text = decode(token.text);
+      if (pendingBreak && segment.text) segment.text += '\n';
+      pendingBreak = false;
+      runs.push({
+        start: offset,
+        end: offset + text.length,
+        segment,
+        segStart: segment.text.length,
+        item: items.length,
+      });
+      segment.text += text;
+      push({ text });
+      return;
+    }
+    const { tag } = token;
+    if (tag.comment) {
+      markup(token.markup);
+      return;
+    }
+    const isBlock = BLOCK.has(tag.name);
+    if (segment && (isBlock || tag.name === 'br')) pendingBreak = true;
+
+    if (tag.closing) {
+      const at = stack.map((e) => e.name).lastIndexOf(tag.name);
+      const closed = at === -1 ? [] : stack.splice(at);
+      const table = closed.find((e) => e.nameRowOf)?.nameRowOf;
+      if (table) {
+        table.naming = false;
+        const name = blockName(table.blockText);
+        if (SKIP_BLOCKS.has(name)) table.skip = true;
+        else if (name && table.root && segment) Object.assign(segment, { kind: 'block', label: labelOf(name) });
+      }
+      skip = stack.filter((e) => e.skip).length;
+      if (closed.some((e) => e.root)) segment = null;
+      push({
+        markup: STAND_IN,
+        html: token.markup,
+        ...(isBlock ? { interpretAs: '\n\n' } : {}),
+        ...(closed.some((e) => e.root) ? { end: true } : {}),
+      });
+      return;
+    }
+
+    if (tag.name === 'main') rootDepth = stack.length + 2;
+    const entry = {
+      name: tag.name,
+      skip: SKIP_TAGS.has(tag.name) || (tag.name === 'div' && SKIP_BLOCKS.has(tag.classes[0])),
+      table: tag.name === 'table',
+      rows: rowCounts.get(index),
+    };
+    if (stack.length === rootDepth && tag.name !== 'main') {
+      entry.root = true;
+      segment = { ...describe(tag), text: '' };
+      segments.push(segment);
+      pendingBreak = false;
+    }
+    // The first row of a block table holds the block name: don't check it.
+    const table = stack.findLast((e) => e.table);
+    if (tag.name === 'tr' && table && !table.named && table.rows > 1) {
+      table.named = true;
+      table.naming = true;
+      table.blockText = '';
+      entry.skip = true;
+      entry.nameRowOf = table;
+    }
+    let interpretAs;
+    if (tag.name === 'br') interpretAs = '\n';
+    else if (isBlock) interpretAs = '\n\n';
+    else if (entry.skip && segment && !skip) interpretAs = 'X';
+    markup(token.markup, interpretAs);
+    if (tag.empty) {
+      if (entry.root) {
+        segment = null;
+        items[items.length - 1].end = true;
+      }
+      return;
+    }
+    stack.push(entry);
+    if (entry.skip) skip += 1;
   });
+
+  const kept = segments.filter((s) => s.text.trim());
+  kept.forEach((s, index) => { s.index = index; });
   return { items, runs: runs.filter((r) => kept.includes(r.segment)), segments: kept };
 }
 
@@ -229,23 +263,23 @@ export function chunkItems(items, max) {
 }
 
 /**
- * Rebuild the HTML with replacements applied to text only; markup is kept.
+ * Rebuild the original HTML with replacements applied to text only.
  * @param {{ offset: number, length: number, value: string }[]} replacements
  *   annotation-string offsets, not overlapping
  */
 export function applyReplacements(doc, replacements) {
   const sorted = [...replacements].sort((a, b) => a.offset - b.offset);
-  const runAt = new Map(doc.runs.map((r) => [r.item, r]));
+  const checked = new Set(doc.runs.map((r) => r.item));
   const inserted = new Set();
   let offset = 0;
   return doc.items.map((item, index) => {
     const start = offset;
     if (!('text' in item)) {
       offset += item.markup.length;
-      return item.markup;
+      return item.html;
     }
     offset += item.text.length;
-    if (!runAt.has(index)) return escapeHtml(item.text);
+    if (!checked.has(index)) return escapeHtml(item.text);
     let out = '';
     let pos = 0;
     sorted.forEach((r) => {
