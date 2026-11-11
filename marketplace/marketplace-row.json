@@ -1,0 +1,13 @@
+{
+  "Title": "LanguageTool",
+  "Description": "Proofread a page or a selection with LanguageTool: spelling, grammar, punctuation and style in 30+ languages. Fix a selection with one click and keep brand names in a site dictionary. Free API, premium key or your own server.",
+  "Category": "Extension",
+  "Doc Url": "https://github.com/benpeter/ew-languagetool#readme",
+  "Try Url": "",
+  "Status": "Early Access",
+  "Owner": "Ben Peter",
+  "Type": "Plugin",
+  "Logo": "https://main--ew-languagetool--benpeter.aem.live/tools/plugins/languagetool/icon.svg",
+  "Image": "https://main--ew-languagetool--benpeter.aem.live/marketplace/card.png",
+  "Date": "2026-11-11"
+}

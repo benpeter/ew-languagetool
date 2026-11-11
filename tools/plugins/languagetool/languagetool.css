@@ -118,7 +118,7 @@ summary:focus-visible {
     gap: 10px;
 }
 
-#results h2:focus {
+#results-title:focus {
     outline: none;
 }
 
@@ -253,6 +253,10 @@ summary:focus-visible {
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+
+.settings h2 {
+    margin-top: 8px;
 }
 
 .settings dl {

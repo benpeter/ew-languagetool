@@ -279,7 +279,7 @@ function consentNeeded(ep) {
   if (given.includes(ep.host)) return Promise.resolve(true);
   $('notice-text').textContent = ep.kind === 'custom'
     ? `Checking sends the text you check to ${ep.host}, the LanguageTool server this site set up. Nothing else leaves your browser.`
-    : `Checking sends the text you check to LanguageTool (${ep.host}), a service by LanguageTooler GmbH in Germany. Nothing else leaves your browser.`;
+    : `Checking sends the text you check to LanguageTool (${ep.host}), a service by LanguageTooler GmbH. Nothing else leaves your browser.`;
   $('notice').hidden = false;
   $('notice-ok').focus();
   return new Promise((resolve) => {
