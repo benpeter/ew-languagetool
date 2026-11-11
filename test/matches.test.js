@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDocument } from '../tools/plugins/languagetool/lib/text.js';
+import { buildDocument, chunkItems } from '../tools/plugins/languagetool/lib/text.js';
 import {
   classify, prepareMatches, groupBySegment, countByType, matchKey, context,
 } from '../tools/plugins/languagetool/lib/matches.js';
@@ -22,7 +22,8 @@ test('classify maps LanguageTool rules to four author-facing types', () => {
 
 const html = '<p>Das Team von Schamdan steht Ihnen gerne zu Verfügung.</p><p>Bei Ovinho kaufen wir Wein .</p>';
 const doc = buildDocument(html);
-const at = (word) => html.indexOf(word);
+const sent = doc.items.map((i) => i.text ?? i.markup).join('');
+const at = (word) => sent.indexOf(word);
 const raw = [
   match(at('Schamdan'), 8, rule('GERMAN_SPELLER_RULE', 'misspelling', 'TYPOS'), ['Garten', 'Schämten', 'Schäden', 'Schaden']),
   match(at('zu '), 2, rule('ZU_ZUR', 'uncategorized', 'CONFUSED_WORDS'), ['zur']),
@@ -51,7 +52,7 @@ test('ignored keys hide matches for this page', () => {
 });
 
 test('prepareMatches adds the chunk base to offsets', () => {
-  const second = html.indexOf('<p>Bei');
+  const second = chunkItems(doc.items, 1)[1].base;
   const chunkRaw = [match(at('Ovinho') - second, 6, rule('GERMAN_SPELLER_RULE', 'misspelling', 'TYPOS'))];
   const [m] = prepareMatches(doc, chunkRaw, second, {});
   assert.equal(m.word, 'Ovinho');

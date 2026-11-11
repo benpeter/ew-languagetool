@@ -140,3 +140,8 @@ test('applyReplacements escapes the new text', () => {
   const s = annotationString(doc.items);
   assert.equal(applyReplacements(doc, [{ offset: s.indexOf('b'), length: 1, value: '<&>' }]), '<p>a &lt;&amp;&gt;</p>');
 });
+
+test('a selection inside one block cell is a one-row table: its text is checked', () => {
+  const doc = buildDocument('<table><tbody><tr><td><p>gerne zu Verfügung</p></td></tr></tbody></table>');
+  assert.deepEqual(doc.segments.map((s) => s.text), ['gerne zu Verfügung']);
+});
