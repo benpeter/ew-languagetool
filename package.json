@@ -1,0 +1,27 @@
+{
+  "name": "ew-languagetool",
+  "private": true,
+  "version": "0.1.0",
+  "description": "LanguageTool proofreading panel for AEM Experience Workspace",
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "lint:js": "eslint .",
+    "lint:css": "stylelint \"tools/**/*.css\"",
+    "lint": "npm run lint:js && npm run lint:css"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/benpeter/ew-languagetool.git"
+  },
+  "author": "Ben Peter",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@babel/eslint-parser": "7.28.6",
+    "eslint": "8.57.1",
+    "eslint-config-airbnb-base": "15.0.0",
+    "eslint-plugin-import": "2.32.0",
+    "stylelint": "17.1.1",
+    "stylelint-config-standard": "40.0.0"
+  }
+}
