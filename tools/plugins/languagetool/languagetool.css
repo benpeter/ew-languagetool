@@ -294,3 +294,9 @@ summary:focus-visible {
     font-size: 12px;
     color: var(--s2-gray-600, #717171);
 }
+
+#groups {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}

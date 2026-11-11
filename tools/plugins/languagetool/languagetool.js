@@ -6,7 +6,7 @@ import {
 } from './lib/matches.js';
 import { parseSettings, resolveEndpoint, addWord } from './lib/settings.js';
 import { buildBody, check } from './lib/api.js';
-import { replaceSelection } from './lib/selection.js';
+import { replaceSelection, plainText } from './lib/selection.js';
 import { loadConfig, saveConfig } from './lib/config.js';
 
 const KEY_STORE = 'ew-languagetool:premium';
@@ -27,6 +27,7 @@ const MESSAGES = {
   'selection-changed': 'The selection changed since the check. Check the selection again.',
   'no-live': 'This editor does not share the page text with extensions. Select text and use Check selection.',
   'too-fast': 'Many checks in the last minute. Wait a moment so the free server does not block you.',
+  partial: 'Fixes inside formatted text work only on whole paragraphs. Select the whole paragraph, check it again and apply.',
 };
 
 const $ = (id) => document.getElementById(id);
@@ -330,6 +331,10 @@ async function runCheck(mode) {
     const chunks = chunkItems(doc.items, ep.maxChars);
     if (throttled(ep) || (ep.kind === 'free' && state.recent.length + chunks.length > 20)) throw new Error('too-fast');
 
+    // A selection often starts mid-sentence; don't ask for a capital letter there.
+    const settings = mode === 'selection'
+      ? { ...state.settings, disabledRules: [...state.settings.disabledRules, 'UPPERCASE_SENTENCE_START'] }
+      : state.settings;
     const raw = [];
     let language;
     for (let i = 0; i < chunks.length; i += 1) {
@@ -337,7 +342,7 @@ async function runCheck(mode) {
       state.recent.push(Date.now());
       // Requests run one after the other to stay within LanguageTool's limits.
       // eslint-disable-next-line no-await-in-loop
-      const result = await check(fetch, ep, buildBody(chunks[i].items, state.settings, ep));
+      const result = await check(fetch, ep, buildBody(chunks[i].items, settings, ep));
       raw.push({ base: chunks[i].base, matches: result.matches });
       language ??= result.language;
     }
@@ -364,7 +369,17 @@ async function applyFixes() {
   const fixes = [...state.accepted.values()];
   if (!fixes.length) return;
   const next = applyReplacements(state.doc, fixes);
-  const result = await replaceSelection(state.actions, state.html, next);
+  const text = plainText(state.doc) === null ? undefined : plainText(buildDocument(next));
+  if (text === undefined) {
+    // sendHTML replaces whole elements cleanly but splits a paragraph around a partial selection.
+    const live = await readLiveDocument().then(({ html }) => buildDocument(html), () => null);
+    const whole = new Set(live?.segments.map((s) => s.text));
+    if (!state.doc.segments.every((s) => whole.has(s.text))) {
+      setStatus(MESSAGES.partial, 'error');
+      return;
+    }
+  }
+  const result = await replaceSelection(state.actions, state.html, next, text);
   if (!result.ok) {
     setStatus(MESSAGES[result.error], 'error');
     return;
