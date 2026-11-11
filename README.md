@@ -2,7 +2,7 @@
 
 A proofreading panel for [AEM Experience Workspace](https://da.live). It checks the page you are editing with [LanguageTool](https://languagetool.org) and helps you fix what it finds: spelling, grammar, punctuation and style, in more than 30 languages.
 
-![The LanguageTool panel next to a German restaurant page, listing a misspelled name, a wrong preposition and a missing comma](marketplace/card.png)
+![The LanguageTool panel next to a German restaurant page. It says checks go to the LanguageTool free API and lists five issues, among them two unknown names and a wrong preposition](marketplace/card.png)
 
 It is for authors who publish in Experience Workspace and want a second pair of eyes before they hit preview, without copying text into another tool.
 
@@ -11,7 +11,9 @@ What you can do in the panel:
 - Check page: lists every issue on the page, grouped by paragraph or block, with the flagged words underlined, LanguageTool's explanation and up to three suggestions. Counts at the top show spelling, grammar, punctuation and style separately.
 - Check selection and fix it: select text in the document, check it, pick the suggestions you want and apply them. The panel replaces only the selected text.
 - Site dictionary: names like your brand or a product LanguageTool doesn't know show up as spelling mistakes. Add them to the site dictionary once and they are ignored for every author on the site. Authors who can't change the site settings can ignore a word for the current page instead.
-- Ask the Workspace assistant: on sites with Workspace chat, one button puts the list of issues into the chat prompt, so the assistant can fix them for you. Nothing is sent until you press send in the chat.
+- Ask the assistant: on sites with Workspace chat, one button puts the issues into the chat prompt as a short list: the flagged words, where they are and the suggested fix. The assistant can then fix them for you. Nothing is sent until you press send in the chat.
+
+The top of the panel says where checks go ("Checks go to LanguageTool free API"). The info button next to it explains what is sent and shows the site settings. The … menu holds the rare actions: adding or removing your premium key, and opening the site settings.
 
 ## Set it up
 
@@ -38,7 +40,7 @@ You need permission to edit the site configuration at `https://da.live/config#/{
 
 3. Open a page in Experience Workspace, choose Panels, then LanguageTool.
 
-The first time you check, the panel tells you where the text goes and asks you to continue.
+The first time you check, the panel tells you where the text goes and asks you to continue. It asks again if the panel is served from a new address or checks go to a different server.
 
 ## Servers
 
@@ -54,7 +56,7 @@ Limits are from LanguageTool's [public API page](https://dev.languagetool.org/pu
 
 Free API. Works without an account. LanguageTool asks that you don't send automated requests to it; the panel only checks when an author clicks a button. LanguageTool's [terms](https://languagetool.org/legal/terms) say the services are for "personal, non-commercial purposes" unless LanguageTool agrees otherwise in writing. If you use this for a business site, get a premium plan or run your own server.
 
-Premium API. Each author enters their own LanguageTool login email and API key under Settings in the panel. Get the key at [languagetool.org/editor/settings/access-tokens](https://languagetool.org/editor/settings/access-tokens) after signing in. API plans are listed at [languagetool.org/proofreading-api](https://languagetool.org/proofreading-api). With `server` set to `free`, a saved key switches that author to premium; with `server` set to `premium`, authors without a key are asked for one.
+Premium API. Each author adds their own LanguageTool login email and API key with Add premium key in the panel's … menu. Get the key at [languagetool.org/editor/settings/access-tokens](https://languagetool.org/editor/settings/access-tokens) after signing in. API plans are listed at [languagetool.org/proofreading-api](https://languagetool.org/proofreading-api). With `server` set to `free`, a saved key switches that author to premium, and the panel then says "Checks go to LanguageTool Premium, with your key"; with `server` set to `premium`, authors without a key are asked for one.
 
 Your own server. LanguageTool is open source ([LGPL 2.1](https://github.com/languagetool-org/languagetool)). Run its HTTP server and set `server` to its URL. The panel calls `{url}/v2/check`. The server must use https (`http://localhost` is allowed for testing) and must allow cross-origin requests: start the server with `--allow-origin` (without a value it allows any origin). There is no official Docker image; [erikvl87/languagetool](https://hub.docker.com/r/erikvl87/languagetool) is a community image.
 
@@ -66,11 +68,11 @@ When you click Check page or Check selection, the panel sends the text of the pa
 
 Nothing is sent while you type, and nothing is sent to anyone else. LanguageTool says it doesn't store texts sent to its API and runs its servers in Germany ([proofreading API page](https://languagetool.org/proofreading-api)).
 
-The premium key is stored in your browser's local storage for the origin the panel is served from. Forget key in Settings removes it. Any code served from that origin can read it, so only use a copy you trust (see [Deploy your own copy](#deploy-your-own-copy)).
+The premium key is stored in your browser's local storage for the origin the panel is served from. Remove premium key in the … menu removes it. Any code served from that origin can read it, so only use a copy you trust (see [Deploy your own copy](#deploy-your-own-copy)).
 
 ## Keyboard and accessibility
 
-All controls are buttons and form fields you can reach with Tab. After a check, focus moves to the result heading and the result count is announced. Each issue lists the flagged words in text, not only as an underline. Issue types are labelled in words, not only by color.
+All controls are buttons and form fields you can reach with Tab. Info buttons and the … menu open with Enter and close with Escape, and focus goes back to the button. After a check, focus moves to the result heading, which says how many issues were found. Each issue lists the flagged words in text, not only as an underline. Issue types are labelled in words, not only by color.
 
 ## Known limits
 
@@ -80,7 +82,7 @@ All controls are buttons and form fields you can reach with Tab. After a check, 
 - Page metadata is not checked: Experience Workspace doesn't pass it to extensions.
 - Issues don't become Workspace comments. Extensions can't create comments today.
 - Results are a snapshot. After editing, check again.
-- Premium results for German were unstable when tested on 2026-11-11: the same text sometimes came back with no issues at all, even obvious typos, while the free API found them. English premium results were stable. If a German page shows 0 issues with a premium key, use Forget key and check again on the free API.
+- Premium results for German were unstable when tested on 2026-11-11: the same text sometimes came back with no issues at all, even obvious typos, while the free API found them. English premium results were stable. If a German page shows no issues with a premium key, remove the key in the … menu and check again on the free API.
 
 ## Troubleshooting
 
@@ -91,8 +93,8 @@ All controls are buttons and form fields you can reach with Tab. After a check, 
 | "Could not reach ..." | Your network blocks the server, or a self-hosted server doesn't send CORS headers for the panel's origin. Open the browser console for details. |
 | "Select some text in the document first" | Select text in the editor before Check selection. |
 | "The selection changed since the check" | You changed the selection after checking. Check it again, then apply. |
-| "LanguageTool did not accept the premium key" (HTTP 401/403) | Check the email and API key in Settings. |
-| Add to site dictionary is missing | You can't edit the site configuration. Use Ignore on this page, or ask someone who can to add the word. |
+| "LanguageTool did not accept your premium key" (HTTP 401/403) | Remove the key in the … menu and add it again with the right email and API key. |
+| Add to dictionary is missing | You can't edit the site configuration. Use Ignore, or ask someone who can to add the word. |
 
 ## Develop locally
 

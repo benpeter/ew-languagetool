@@ -23,7 +23,7 @@ Click Check page.
 
 ## 1:00 Site dictionary (30 seconds)
 
-Click Add to site dictionary under "Schamdan". The count drops from 5 to 3, and the capitalized "SCHAMDAN" disappears too. Do the same for "Ovinho".
+Click Add to dictionary under "Schamdan". The count drops from 5 to 3, and the capitalized "SCHAMDAN" disappears too. Do the same for "Ovinho".
 
 "The words are saved in the site settings, so every author on this site gets them. Authors who can't change the settings can ignore a word for the page instead."
 
@@ -31,8 +31,8 @@ Click Add to site dictionary under "Schamdan". The count drops from 5 to 3, and 
 
 In the editor, select "stehen Ihnen gerne zu Verfügung". Click Check selection.
 
-- One issue: "zu" should be "zur". Click the "zur" suggestion; the corrected text shows above the Apply button.
-- Click Apply 1 fix to the selection. The editor text changes in place, with undo available.
+- One issue: "zu" should be "zur". Click the "zur" suggestion; the corrected text shows with an Apply button above the list.
+- Click Apply 1 fix. The editor text changes in place, with undo available.
 
 Then select the three paragraphs from "Dies vermeidet" to "Servicepersonal.", check, pick "Zutaten, die", apply. The comma appears and the paragraphs stay as they were.
 
@@ -40,13 +40,13 @@ Then select the three paragraphs from "Dies vermeidet" to "Servicepersonal.", ch
 
 ## 2:20 Settings and servers (25 seconds)
 
-Open Settings.
+Point at "Checks go to LanguageTool free API" and open its info button.
 
-- The site uses the free LanguageTool API: no account, about 20 checks a minute.
-- Each author can add their own premium key here. It stays in their browser and is never written to the site settings.
+- The site uses the free LanguageTool API: no account, about 20 checks a minute. The info shows what is sent and the site settings.
+- Open the … menu: each author can add their own premium key there. It stays in their browser and is never written to the site settings.
 - A site can also point to its own LanguageTool server, so text never leaves the company.
 
-If a premium key is set up, check the page again and point at issues marked "(premium)". Try this right before the demo: on 2026-11-11 the premium API returned no issues for this German page on most calls. If it still does, skip this step and leave the key out of the demo browser.
+If a premium key is set up, the top line says "Checks go to LanguageTool Premium, with your key". Check the page again and point at issues marked "(premium)". Try this right before the demo: on 2026-11-11 the premium API returned no issues for this German page on most calls. If it still does, skip this step and leave the key out of the demo browser.
 
 ## 2:45 Wrap-up (15 seconds)
 
