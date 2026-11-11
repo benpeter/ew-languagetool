@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildDocument, chunkItems } from '../tools/plugins/languagetool/lib/text.js';
 import {
-  classify, prepareMatches, groupBySegment, countByType, matchKey, context,
+  classify, prepareMatches, groupBySegment, countByType, matchKey, context, assistantPrompt,
 } from '../tools/plugins/languagetool/lib/matches.js';
 
 const rule = (id, issueType, category) => ({ id, issueType, category: { id: category } });
@@ -81,4 +81,27 @@ test('context cuts the sentence around a match at word boundaries', () => {
   assert.deepEqual(short, {
     before: '', word: 'zu', after: ' Verfügung', cutStart: false, cutEnd: false,
   });
+});
+
+test('assistantPrompt lists word, excerpt and fix, not LanguageTool messages', () => {
+  // LanguageTool messages can be questions to the author ("Möchten Sie …?"), which read
+  // as questions to the assistant in a prompt.
+  const prompt = assistantPrompt(prepareMatches(doc, raw, 0, {}));
+  assert.doesNotMatch(prompt, /msg /);
+  const lines = prompt.split('\n');
+  assert.ok(lines.includes('1. "Schamdan" in "Das Team von Schamdan steht Ihnen gerne zu Verfügung.": change to "Garten", "Schämten" or "Schäden"'));
+  assert.ok(lines.includes('2. "zu" in "Das Team von Schamdan steht Ihnen gerne zu Verfügung.": change to "zur"'));
+  assert.ok(lines.includes('4. " ." in "Bei Ovinho kaufen wir Wein .": change to "."'));
+  assert.match(lines[0], /names/);
+});
+
+test('assistantPrompt marks spots without a suggestion and caps the list at 40', () => {
+  const noFix = prepareMatches(doc, [match(at('Ovinho'), 6, rule('GERMAN_SPELLER_RULE', 'misspelling', 'TYPOS'))], 0, {});
+  assert.ok(assistantPrompt(noFix).split('\n').includes('1. "Ovinho" in "Bei Ovinho kaufen wir Wein .": no suggestion (spelling)'));
+  const many = Array.from({ length: 45 }, (_, i) => ({
+    segment: { text: 'Ein Fehlr.' }, start: 4, end: 9, word: 'Fehlr', offset: i, type: 'spelling', suggestions: ['Fehler'],
+  }));
+  const lines = assistantPrompt(many).split('\n');
+  assert.equal(lines.filter((l) => /^\d+\. /.test(l)).length, 40);
+  assert.ok(lines.includes('5 more are not listed. Check the page again after these fixes.'));
 });

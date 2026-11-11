@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULTS, parseSettings, resolveEndpoint, addWord, parseWords,
+  DEFAULTS, parseSettings, resolveEndpoint, addWord, parseWords, serverLabel,
 } from '../tools/plugins/languagetool/lib/settings.js';
 
 const config = (rows, extra = {}) => ({
@@ -106,4 +106,16 @@ test('addWord turns a single-sheet config into a multi-sheet one', () => {
   assert.equal(after[':type'], 'multi-sheet');
   assert.deepEqual(after[':names'], ['data', 'languagetool']);
   assert.deepEqual(after.data.data, [{ key: 'a', value: 'b' }]);
+});
+
+test('serverLabel says where checks go, also when a personal key overrides the site setting', () => {
+  const site = (server) => ({ ...DEFAULTS, server });
+  const key = { username: 'a@b.c', apiKey: 'k' };
+  const label = (s, c) => serverLabel(s, resolveEndpoint(s, c));
+  assert.equal(label(site('free'), null), 'LanguageTool free API');
+  assert.equal(label(site('free'), key), 'LanguageTool Premium, with your key');
+  assert.equal(label(site('premium'), key), 'LanguageTool Premium, with your key');
+  assert.equal(label(site('premium'), null), 'LanguageTool Premium, once you add your key');
+  assert.equal(label(site('https://lt.example.com'), key), "lt.example.com, this site's own server");
+  assert.equal(label(site('nonsense'), null), 'no valid server in the site settings');
 });
