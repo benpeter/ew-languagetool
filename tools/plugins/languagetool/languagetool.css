@@ -24,7 +24,7 @@ body {
 }
 
 /* The panel tab already shows the name; the heading is for screen readers. */
-.lt .lt-vh {
+.lt-vh {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -154,47 +154,238 @@ body {
   outline: none;
 }
 
-.lt .lt-meta,
-.lt .lt-rule {
+.lt .lt-meta {
   font-size: var(--s2-body-size-xs, 12px);
   color: var(--s2-gray-700, #505050);
 }
 
-.lt .lt-counts {
+/* Results follow Preflight's page evaluation view (da-nx
+   nx2/blocks/chat-ao/artifacts/page-evaluation.css), with less padding for a narrow panel. */
+.lt-tone {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  background-color: currentcolor;
+  mask: url("img/s2-icon-closecircle-20-n.svg") center / contain no-repeat;
+}
+
+.lt-tone.negative {
+  color: var(--s2-orange-900, #c24e00);
+}
+
+.lt-tone.positive {
+  color: var(--s2-green-900, #05834e);
+  mask-image: url("img/s2-icon-checkmarkcircle-20-n.svg");
+}
+
+.lt .lt-summary {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+}
+
+.lt .lt-tile {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 6px;
+}
+
+.lt .lt-tile + .lt-tile {
+  border-left: 1px solid var(--s2-gray-200, #e1e1e1);
+}
+
+.lt .lt-tile-label {
+  overflow: hidden;
+  font-size: var(--s2-body-size-xs, 12px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lt .lt-tile-value {
+  font-size: var(--s2-heading-size-s, 20px);
+  font-weight: var(--s2-heading-font-weight, 800);
+  line-height: var(--s2-heading-line-height, 1.3);
+}
+
+.lt .lt-tile-value.negative {
+  color: var(--s2-orange-900, #c24e00);
+}
+
+.lt .lt-tile-value.positive {
+  color: var(--s2-green-900, #05834e);
+}
+
+.lt .lt-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lt .lt-section {
+  overflow: hidden;
+  border: 1px solid var(--s2-gray-200, #e1e1e1);
+  border-radius: var(--s2-corner-radius-700, 10px);
+}
+
+.lt .lt-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.lt .lt-section-head::-webkit-details-marker {
+  display: none;
+}
+
+.lt .lt-section-chip {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--s2-corner-radius-700, 10px);
+  background: var(--s2-orange-100, #fff6e7);
+}
+
+.lt .lt-section-labels {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.lt .lt-section-label,
+.lt .lt-item-title {
+  font-weight: 700;
+  color: var(--s2-gray-900, #131313);
+}
+
+.lt .lt-section-sublabel,
+.lt .lt-item-desc {
+  font-size: var(--s2-body-size-xs, 12px);
+  color: var(--s2-gray-700, #505050);
+}
+
+.lt .lt-chevron {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  background-color: var(--s2-gray-600, #717171);
+  mask: url("img/s2-icon-chevronup-20-n.svg") center / contain no-repeat;
+  transform: rotate(180deg);
+  transition: transform 0.15s ease;
+}
+
+.lt .lt-section[open] > .lt-section-head > .lt-chevron {
+  transform: none;
+}
+
+.lt .lt-items {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.lt .lt-counts li,
-.lt .lt-badge {
-  padding: 1px 8px;
-  border-radius: 10px;
+.lt .lt-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.lt .lt-item-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.lt .lt-item-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lt .lt-item-action {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 2px 8px;
+  border: 1px solid var(--s2-gray-300, #dadada);
+  border-radius: var(--s2-corner-radius-500, 8px);
+  background: none;
+  color: var(--s2-gray-900, #131313);
+  font: inherit;
   font-size: var(--s2-body-size-xs, 12px);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.lt .lt-item-action:hover {
   background: var(--s2-gray-100, #e9e9e9);
 }
 
-.lt .spelling .lt-badge,
-.lt .lt-counts .spelling {
-  background: var(--s2-red-100, #fff6f6);
+.lt-paging {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 4px 12px 8px;
 }
 
-.lt .grammar .lt-badge,
-.lt .lt-counts .grammar {
-  background: var(--s2-orange-100, #fff6e7);
+.lt-paging-label {
+  font-size: var(--s2-body-size-xs, 12px);
+  font-weight: 700;
+  color: var(--s2-gray-800, #292929);
 }
 
-.lt .punctuation .lt-badge,
-.lt .lt-counts .punctuation {
-  background: var(--s2-blue-100, #f5f9ff);
+.lt-paging-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--s2-corner-radius-500, 8px);
+  background: none;
+  color: var(--s2-gray-600, #717171);
+  cursor: pointer;
 }
 
-.lt .style .lt-badge,
-.lt .lt-counts .style {
-  background: var(--s2-green-100, #e9fff1);
+.lt-paging-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.lt-paging-btn:hover:not(:disabled) {
+  background: var(--s2-gray-100, #e9e9e9);
+}
+
+.lt-paging-btn::after {
+  content: "";
+  display: block;
+  width: 14px;
+  height: 14px;
+  background-color: currentcolor;
+  mask: url("img/s2-icon-chevronup-20-n.svg") center / contain no-repeat;
+}
+
+.lt-paging-btn.prev::after {
+  transform: rotate(-90deg);
+}
+
+.lt-paging-btn.next::after {
+  transform: rotate(90deg);
 }
 
 .lt .lt-apply {
@@ -215,70 +406,228 @@ body {
   display: none;
 }
 
-.lt .lt-group {
-  padding: 8px 0 0;
-  border-top: 0;
-}
-
-.lt .lt-matches {
+.lt .lt-foot {
   display: flex;
   flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.lt .lt-match {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 0;
-  border-top: 1px solid var(--s2-gray-200, #e1e1e1);
-}
-
-.lt .lt-match:first-child {
-  border-top: 0;
-  padding-top: 0;
-}
-
-.lt .lt-excerpt {
-  white-space: pre-line;
-  color: var(--s2-gray-700, #505050);
-}
-
-.lt .lt-excerpt mark {
-  background: none;
-  color: inherit;
-  text-decoration: underline wavy var(--s2-red-900, #d73220);
-  text-decoration-skip-ink: none;
-  text-underline-offset: 3px;
-  white-space: pre;
-}
-
-.lt .lt-suggestions,
-.lt .lt-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.lt .lt-rule {
-  margin-right: auto;
-}
-
-/* A picked fix looks like DA's toggled icon button (buttons.css .nx-action-btn-icon.is-active). */
-.lt .lt-suggestions .is-active,
-.lt .lt-suggestions .is-active:hover:not(:disabled) {
-  background: var(--s2-gray-900, #3c3c3c);
-  color: var(--s2-gray-25, #fff);
-}
-
-.lt .lt-credit {
+  gap: 4px;
   margin-top: auto;
   padding-top: 12px;
   font-size: var(--s2-body-size-xs, 12px);
   color: var(--s2-gray-700, #505050);
+}
+
+/* One issue, like Preflight's suggestion dialog; the look follows da-nx nx-dialog. */
+.lt-dialog {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 12px;
+  border: 0;
+  background: none;
+  color: var(--s2-gray-800, #292929);
+  font-family: 'Adobe Clean', adobe-clean, 'Source Sans Pro', sans-serif;
+  font-size: var(--s2-body-size-s, 14px);
+  line-height: 1.43;
+  overflow-wrap: anywhere;
+}
+
+.lt-dialog[open] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lt-dialog::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+
+.lt-dialog :where(p, h3, h4) {
+  margin: 0;
+}
+
+.lt-dialog-panel {
+  display: flex;
+  box-sizing: border-box;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 100%;
+  padding: 16px;
+  border: 1px solid var(--s2-gray-200, #e1e1e1);
+  border-radius: var(--s2-corner-radius-800, 16px);
+  background: var(--s2-gray-25, #fff);
+  box-shadow: 0 8px 32px rgb(0 0 0 / 18%);
+}
+
+.lt-dialog-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 22px;
+  color: var(--s2-gray-900, #131313);
+}
+
+.lt-dialog-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.lt-dialog-body section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lt-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.lt-dialog .lt-asset {
+  font-size: var(--s2-body-size-m, 16px);
+  font-weight: 700;
+  color: var(--s2-gray-900, #131313);
+}
+
+.lt-detail-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lt-detail-heading h4 {
+  font-size: var(--s2-body-size-s, 14px);
+  color: var(--s2-gray-900, #131313);
+}
+
+.lt-excerpt {
+  white-space: pre-line;
+}
+
+.lt-excerpt mark,
+.lt-excerpt ins,
+.lt-excerpt del {
+  color: inherit;
+  white-space: pre;
+}
+
+.lt-excerpt mark {
+  background: none;
+  text-decoration: underline wavy var(--s2-red-900, #d73220);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+}
+
+.lt-excerpt ins {
+  padding: 0 1px;
+  border-radius: var(--s2-corner-radius-100, 4px);
+  background: var(--s2-green-100, #edfcf1);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.lt-excerpt del {
+  text-decoration-color: var(--s2-red-900, #d73220);
+}
+
+.lt-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.lt-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.lt-choice input {
+  margin: 3px 0 0;
+}
+
+.lt-detail-actions,
+.lt-chat-actions,
+.lt-detail-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.lt-detail-actions {
+  justify-content: space-between;
+}
+
+.lt-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  border: none;
+  background: none;
+  color: var(--s2-gray-800, #292929);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.lt-copy:hover {
+  color: var(--s2-gray-900, #131313);
+}
+
+.lt-copy svg {
+  width: 16px;
+  height: 16px;
+}
+
+.lt-dialog .lt-context-title {
+  font-size: var(--s2-body-size-m, 16px);
+  color: var(--s2-gray-900, #131313);
+}
+
+.lt-context {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--s2-gray-200, #e1e1e1);
+  border-radius: 12px;
+}
+
+.lt-chip {
+  padding: 2px 10px;
+  border-radius: var(--s2-corner-radius-100, 4px);
+  background: var(--s2-gray-100, #e9e9e9);
+  font-size: var(--s2-body-size-xs, 12px);
+}
+
+.lt-dialog .lt-rule,
+.lt-detail-status {
+  font-size: var(--s2-body-size-xs, 12px);
+  color: var(--s2-gray-700, #505050);
+}
+
+.lt-detail-status:empty {
+  display: none;
+}
+
+.lt-detail-paging {
+  padding: 12px 0 0;
+  border-top: 1px solid var(--s2-gray-200, #e1e1e1);
 }
 
 /* nx-popover measures its container with the host at 100% width, so the width limit

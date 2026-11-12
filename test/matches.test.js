@@ -118,7 +118,8 @@ const spot = (text, word, from = text.indexOf(word)) => ({
 test('phrase shows a fix in whole words, with a neighbour word for spaces and punctuation', () => {
   assert.deepEqual(phrase(spot('Das Team steht gerne zu Verfügung.', 'zu'), 'zur'), { from: 'zu', to: 'zur' });
   // A dash between two words: "-" alone means nothing to an author.
-  const dash = spot('Das Schamdan in Marburg Weidenhausen bietet', ' ');
+  const town = 'Das Schamdan in Marburg Weidenhausen bietet';
+  const dash = spot(town, ' ', town.indexOf(' Weidenhausen'));
   assert.deepEqual(phrase(dash, '-'), { from: 'Marburg Weidenhausen', to: 'Marburg-Weidenhausen' });
   assert.deepEqual(phrase(spot('Wir freuen uns auf Ihren Besuch .', ' .'), '.'), { from: 'Besuch .', to: 'Besuch.' });
   // A match inside a word grows to the whole word.
@@ -127,7 +128,8 @@ test('phrase shows a fix in whole words, with a neighbour word for spaces and pu
 });
 
 test('fixPrompt asks the assistant for one change and names the paragraph, not LanguageTool', () => {
-  const m = { ...spot('Das Schamdan in Marburg Weidenhausen bietet Euch türkische Köstlichkeiten in Marburg an.', ' '), message: 'Möchten Sie …?' };
+  const text = 'Das Schamdan in Marburg Weidenhausen bietet Euch türkische Köstlichkeiten in Marburg an.';
+  const m = { ...spot(text, ' ', text.indexOf(' Weidenhausen')), message: 'Möchten Sie …?' };
   assert.equal(
     fixPrompt(m, '-'),
     'In the paragraph that starts with "Das Schamdan in Marburg Weidenhausen bietet Euch türkische", change "Marburg Weidenhausen" to "Marburg-Weidenhausen". Change nothing else.',

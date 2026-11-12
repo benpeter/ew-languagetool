@@ -49,13 +49,12 @@ export function prepareMatches(doc, matches, base, { words = [], ignored = new S
   });
 }
 
-export function groupBySegment(matches) {
-  const groups = new Map();
-  [...matches].sort((a, b) => a.offset - b.offset).forEach((m) => {
-    if (!groups.has(m.segment)) groups.set(m.segment, { segment: m.segment, matches: [] });
-    groups.get(m.segment).matches.push(m);
-  });
-  return [...groups.values()].sort((a, b) => a.segment.index - b.segment.index);
+/** Issues by type in the order of TYPES, each in document order. Empty types are left out. */
+export function groupByType(matches) {
+  const sorted = [...matches].sort((a, b) => a.offset - b.offset);
+  return TYPES
+    .map((type) => ({ type, matches: sorted.filter((m) => m.type === type) }))
+    .filter((group) => group.matches.length);
 }
 
 export function countByType(matches) {
@@ -111,4 +110,36 @@ export function assistantPrompt(matches) {
     ...lines,
     ...(rest > 0 ? ['', `${rest} more are not listed. Check the page again after these fixes.`] : []),
   ].join('\n');
+}
+
+const WORD = /[\p{L}\p{N}]/u;
+const isWord = (ch) => !!ch && WORD.test(ch);
+
+/**
+ * The flagged spot and its fix in whole words, so "-" reads as "Marburg-Weidenhausen".
+ * A match of only spaces or punctuation also takes the words that touch it.
+ */
+export function phrase(match, value) {
+  const { text } = match.segment;
+  let from = match.start;
+  let to = match.end;
+  while (from > 0 && isWord(text[from - 1]) && isWord(text[from])) from -= 1;
+  while (to < text.length && isWord(text[to]) && isWord(text[to - 1])) to += 1;
+  if (![...text.slice(from, to)].some(isWord)) {
+    while (from > 0 && /\S/.test(text[from - 1])) from -= 1;
+    while (to < text.length && /\S/.test(text[to])) to += 1;
+  }
+  return {
+    from: text.slice(from, to),
+    to: `${text.slice(from, match.start)}${value}${text.slice(match.end, to)}`,
+  };
+}
+
+/** A prompt for the Workspace assistant to make one fix. */
+export function fixPrompt(match, value) {
+  const { segment } = match;
+  const where = segment.kind === 'block' ? `${segment.label} block` : segment.label.toLowerCase();
+  const start = segment.text.trim().split(/\s+/).slice(0, 8).join(' ');
+  const { from, to } = phrase(match, value);
+  return `In the ${where} that starts with "${start}", change "${from}" to "${to}". Change nothing else.`;
 }

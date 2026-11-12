@@ -22,16 +22,16 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 export const parseWords = (value) => String(value ?? '')
   .split(/[,\n]/).map((w) => w.trim()).filter(Boolean);
 
-function sheetRows(config) {
-  if (config?.[SHEET]?.data) return config[SHEET].data;
-  return config?.[':sheetname'] === SHEET ? config.data || [] : [];
-}
+const rowsOf = (config, name) => {
+  if (config?.[name]?.data) return config[name].data;
+  return config?.[':sheetname'] === name ? config.data || [] : [];
+};
 
 export function parseSettings(config) {
   const settings = {
     ...DEFAULTS, variants: [...DEFAULTS.variants], disabledRules: [], words: [],
   };
-  sheetRows(config).forEach(({ key, value }) => {
+  rowsOf(config, SHEET).forEach(({ key, value }) => {
     const text = String(value ?? '').trim();
     if (key === 'words') settings.words.push(...parseWords(text));
     else if (key === 'disabledRules') settings.disabledRules = parseWords(text);
@@ -78,13 +78,27 @@ export function resolveEndpoint(settings, credentials) {
   };
 }
 
-/** What the panel shows as the server: where checks really go, given the author's key. */
+/** The line at the bottom of the panel: which server checks use, given the author's key. */
 export function serverLabel(settings, endpoint) {
-  if (endpoint.error === 'missing-key') return 'LanguageTool Premium, once you add your key';
-  if (endpoint.error) return 'no valid server in the site settings';
-  if (endpoint.kind === 'premium') return 'LanguageTool Premium, with your key';
-  if (endpoint.kind === 'custom') return `${endpoint.host}, this site's own server`;
-  return 'LanguageTool free API';
+  if (endpoint.error === 'missing-key') return 'Using LanguageTool Premium, once you add your key';
+  if (endpoint.error) return 'No valid LanguageTool server in the site settings';
+  if (endpoint.kind === 'premium') return 'Using LanguageTool Premium, with your key';
+  if (endpoint.kind === 'custom') return `Using ${endpoint.host}, this site's own server`;
+  return 'Using LanguageTool free API';
+}
+
+/**
+ * Whether Workspace chat is on, as Workspace decides it (da-nx isEwChatEnabled):
+ * the ew.disableChat flag of the org config, then of the site config.
+ * @param {object[]} configs org config first, then site config; null when missing
+ */
+export function chatEnabled(configs) {
+  let disabled = false;
+  configs.forEach((config) => {
+    const row = rowsOf(config, 'flags').find((r) => r.key === 'ew.disableChat');
+    if (row) disabled = String(row.value).trim() === 'true';
+  });
+  return !disabled;
 }
 
 const toSheet = (data, extra = {}) => ({

@@ -3,10 +3,11 @@ import DA_SDK from 'https://da.live/nx/utils/sdk.js';
 import loadSharedUi from './shared-ui.js';
 import { buildDocument, chunkItems, applyReplacements } from './lib/text.js';
 import {
-  TYPES, prepareMatches, groupBySegment, countByType, matchKey, context, assistantPrompt,
+  TYPES, prepareMatches, groupByType, countByType, matchKey, context, assistantPrompt, phrase,
+  fixPrompt,
 } from './lib/matches.js';
 import {
-  parseSettings, resolveEndpoint, addWord, serverLabel,
+  parseSettings, resolveEndpoint, addWord, serverLabel, chatEnabled,
 } from './lib/settings.js';
 import { buildBody, check } from './lib/api.js';
 import { replaceSelection, plainText } from './lib/selection.js';
@@ -15,6 +16,7 @@ import { loadConfig, saveConfig } from './lib/config.js';
 const KEY_STORE = 'ew-languagetool:premium';
 const CONSENT_STORE = 'ew-languagetool:consent';
 const FREE_PER_MINUTE = 20;
+const PAGE_SIZE = 5;
 const ICONS = new URL('./img/', import.meta.url).href;
 const SVG = 'http://www.w3.org/2000/svg';
 const TYPE_LABELS = {
@@ -40,6 +42,10 @@ const state = {
   ignored: new Set(),
   accepted: new Map(),
   recent: [],
+  pages: {},
+  closed: new Set(),
+  detail: null,
+  chat: false,
 };
 // DA's shared menu, popover and toast; the panel works without them.
 const ui = { showToast: null, popover: false, menu: null };
@@ -72,6 +78,10 @@ function setStatus(text, kind = '') {
 }
 
 function notify(text) {
+  if ($('detail').open) {
+    $('detail-status').textContent = text;
+    return;
+  }
   if (typeof ui.showToast !== 'function') {
     setStatus(text, 'ok');
     return;
@@ -218,12 +228,12 @@ function renderMenu() {
 }
 
 // ---------------------------------------------------------------------------
-// Where checks go
+// The server, at the bottom of the panel
 // ---------------------------------------------------------------------------
 
 const privacyText = (ep) => (ep.kind === 'custom'
-  ? `Checking sends the text you check to ${ep.host}, the LanguageTool server this site set up. Nothing else leaves your browser.`
-  : `Checking sends the text you check to LanguageTool (${ep.host}), run by LanguageTooler GmbH. Nothing else leaves your browser.`);
+  ? `Checking sends the text you check to ${ep.host}, the LanguageTool server this site set up.`
+  : `Checking sends the text you check to LanguageTool (${ep.host}), run by LanguageTooler GmbH.`);
 
 function siteFacts() {
   const s = state.settings;
@@ -244,7 +254,7 @@ function renderHead() {
   if (ep.kind === 'premium' && state.settings.server === 'free') {
     privacy.push('The site uses the free API. Your premium key, saved in this browser, sends your checks to LanguageTool Premium instead.');
   }
-  help('where checks go', $('server-row'), [...privacy, ...siteFacts()]);
+  help('the server', $('server-row'), [...privacy, ...siteFacts()]);
 
   const problem = $('problem');
   problem.hidden = !ep.error;
@@ -266,17 +276,17 @@ function renderHead() {
 // Results
 // ---------------------------------------------------------------------------
 
-function excerpt(match) {
-  const c = context(match);
-  return el(
-    'p',
-    { class: 'lt-excerpt' },
-    c.cutStart ? '…' : '',
-    c.before,
-    el('mark', {}, c.word),
-    c.after,
-    c.cutEnd ? '…' : '',
-  );
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const titleOf = (m) => phrase(m, '').from.trim() || m.word;
+const toneIcon = (tone) => el('span', { class: `lt-tone ${tone}`, 'aria-hidden': 'true' });
+// A picked fix only exists when checking a selection.
+const picked = (m) => (state.mode === 'selection' ? state.accepted.get(String(m.offset))?.value : undefined);
+
+function excerpt(m, value) {
+  const c = context(m);
+  let spot = el('mark', {}, c.word);
+  if (value !== undefined) spot = value ? el('ins', {}, value) : el('del', {}, c.word);
+  return el('span', { class: 'lt-excerpt' }, c.cutStart ? '…' : '', c.before, spot, c.after, c.cutEnd ? '…' : '');
 }
 
 function currentMatches() {
@@ -299,6 +309,7 @@ async function addToDictionary(word) {
     if (!saved) throw new Error('save');
     state.settings = parseSettings(next);
     renderHead();
+    setStatus('');
     // eslint-disable-next-line no-use-before-define
     renderResults();
     notify(`Added “${word}” to the site dictionary.`);
@@ -325,68 +336,244 @@ function toggleSuggestion(match, value) {
   renderResults();
 }
 
-async function useSuggestion(match, value) {
-  if (state.mode === 'selection') {
-    toggleSuggestion(match, value);
-    return;
-  }
+// ---------------------------------------------------------------------------
+// One issue in a dialog, like Preflight's suggestion view
+// ---------------------------------------------------------------------------
+
+function detailList() {
+  return groupByType(currentMatches()).find((g) => g.type === state.detail.type)?.matches || [];
+}
+
+function openDetail(type, index) {
+  state.detail = { type, index, choice: 0 };
+  // eslint-disable-next-line no-use-before-define
+  renderDetail();
+  if (state.detail && !$('detail').open) $('detail').showModal();
+}
+
+function moveDetail(step) {
+  state.detail.index += step;
+  state.detail.choice = 0;
+  $('detail-status').textContent = '';
+  // eslint-disable-next-line no-use-before-define
+  renderDetail();
+  const next = $(step < 0 ? 'lt-detail-prev' : 'lt-detail-next');
+  (next.disabled ? $(step < 0 ? 'lt-detail-next' : 'lt-detail-prev') : next).focus();
+}
+
+async function copy(text) {
   try {
-    await navigator.clipboard.writeText(value);
-    notify(`Copied “${value}”.`);
+    await navigator.clipboard.writeText(text);
+    notify(`Copied “${text}”.`);
   } catch {
-    setStatus('Could not copy. To apply fixes, select the text in the document and use Check selection.', 'error');
+    notify('Could not copy. Select the text in the document and use Check selection to fix it.');
   }
 }
 
-function matchItem(match) {
-  const selection = state.mode === 'selection';
-  const accepted = state.accepted.get(String(match.offset))?.value;
-  const suggestions = match.suggestions.map((value) => {
-    const label = value === ' ' ? '(space)' : value || '(remove)';
-    const on = selection && accepted === value;
-    return el('button', {
-      type: 'button',
-      class: `nx-action-btn nx-btn-sm${on ? ' is-active' : ''}`,
-      'aria-pressed': selection ? String(on) : false,
-      'aria-label': selection ? `Use “${label}”` : `Copy “${label}”`,
-      onclick: () => useSuggestion(match, value),
-    }, label);
-  });
-  const word = match.word.trim();
-  const tools = [
-    el('button', {
-      type: 'button',
-      class: 'nx-action-btn-quiet nx-btn-sm',
-      'aria-label': `Ignore “${word}” on this page`,
-      onclick: () => {
-        state.ignored.add(matchKey(match));
+function toChat(m, value, autoSend) {
+  state.actions.setPrompt(fixPrompt(m, value), { autoSend });
+  $('detail').close();
+  notify(autoSend
+    ? 'Asked the assistant to make this change.'
+    : 'Added the change to the assistant. Review the prompt before you send it.');
+}
+
+function ignore(m) {
+  state.ignored.add(matchKey(m));
+  // eslint-disable-next-line no-use-before-define
+  renderResults();
+  // eslint-disable-next-line no-use-before-define
+  renderDetail();
+  notify(`Ignoring “${m.word.trim()}” until you close the panel.`);
+  $('detail-body').querySelector('.lt-detail-more button')?.focus();
+}
+
+const heading = (kind, text) => el(
+  'div',
+  { class: 'lt-detail-heading' },
+  el('span', { class: `lt-tone ${kind === 'issue' ? 'negative' : 'positive'}`, 'aria-hidden': 'true' }),
+  el('h4', {}, text),
+);
+
+function choices(m) {
+  if (m.suggestions.length === 1) return el('p', {}, excerpt(m, m.suggestions[0]));
+  return el('fieldset', { class: 'lt-choices' }, el('legend', { class: 'lt-vh' }, 'Suggestions'), m.suggestions.map((value, i) => el(
+    'label',
+    { class: 'lt-choice' },
+    el('input', {
+      type: 'radio',
+      name: 'lt-choice',
+      value: String(i),
+      checked: i === state.detail.choice,
+      onchange: () => {
+        state.detail.choice = i;
         // eslint-disable-next-line no-use-before-define
-        renderResults();
-        notify(`Ignoring “${word}” until you close the panel.`);
+        renderDetail();
+        $('detail-body').querySelector(`input[value="${i}"]`)?.focus();
       },
-    }, 'Ignore'),
-  ];
-  if (match.type === 'spelling' && state.canWrite) {
-    tools.push(el('button', {
+    }),
+    excerpt(m, value),
+  )));
+}
+
+function fixActions(m) {
+  const value = m.suggestions[state.detail.choice];
+  if (state.mode === 'selection') {
+    const on = picked(m) === value;
+    return el('div', { class: 'lt-detail-actions' }, el('button', {
       type: 'button',
-      class: 'nx-action-btn-quiet nx-btn-sm',
-      'aria-label': `Add “${word}” to the site dictionary`,
-      onclick: () => addToDictionary(word),
-    }, 'Add to dictionary'));
+      class: on ? 'nx-action-btn nx-btn-sm' : 'nx-btn-accent nx-btn-sm',
+      onclick: () => {
+        toggleSuggestion(m, value);
+        // eslint-disable-next-line no-use-before-define
+        renderDetail();
+        $('lt-use-fix').focus();
+      },
+      id: 'lt-use-fix',
+    }, on ? 'Don’t use this fix' : 'Use this fix'));
   }
   return el(
-    'li',
-    { class: `lt-match ${match.type}` },
-    el('p', { class: 'lt-message' }, el('span', { class: 'lt-badge' }, TYPE_LABELS[match.type]), ' ', match.message),
-    excerpt(match),
-    suggestions.length ? el('div', { class: 'lt-suggestions', role: 'group', 'aria-label': selection ? 'Fixes' : 'Suggestions, click to copy' }, suggestions) : null,
+    'div',
+    { class: 'lt-detail-actions' },
+    el('button', { type: 'button', class: 'lt-copy', onclick: () => copy(phrase(m, value).to) }, icon('s2-icon-copy-20-n'), 'Copy suggestion'),
+    state.chat ? el(
+      'div',
+      { class: 'lt-chat-actions' },
+      el('button', { type: 'button', class: 'nx-action-btn nx-btn-sm', onclick: () => toChat(m, value, false) }, icon('s2-icon-aichat-20-n'), el('span', {}, 'Add to chat')),
+      el('button', { type: 'button', class: 'nx-btn-accent nx-btn-sm', onclick: () => toChat(m, value, true) }, icon('s2-icon-aisparkles-20-n'), el('span', {}, 'Apply change')),
+    ) : null,
+  );
+}
+
+function renderDetail() {
+  if (!state.detail) return;
+  const list = detailList();
+  if (!list.length) {
+    $('detail').close();
+    return;
+  }
+  const { detail } = state;
+  detail.index = Math.max(0, Math.min(detail.index, list.length - 1));
+  const m = list[detail.index];
+  detail.offset = m.offset;
+  detail.choice = Math.min(detail.choice, Math.max(0, m.suggestions.length - 1));
+  const word = m.word.trim();
+  const { segment } = m;
+  const where = segment.kind === 'block' ? `${segment.label} block` : segment.label;
+  const start = segment.text.trim().split(/\s+/).slice(0, 8).join(' ');
+  const total = list.length;
+  $('detail-title').textContent = TYPE_LABELS[m.type];
+  $('detail-body').replaceChildren(
+    el('h3', { class: 'lt-asset' }, titleOf(m)),
+    el(
+      'section',
+      {},
+      heading('issue', 'Issue identified'),
+      el('p', {}, m.message),
+      el('p', {}, excerpt(m)),
+      m.suggestions.length ? null : el('p', { class: 'lt-rule' }, 'LanguageTool has no suggestion here. Change the text in the document yourself.'),
+    ),
+    m.suggestions.length
+      ? el('section', {}, heading('fix', 'Suggested change'), choices(m), fixActions(m))
+      : null,
     el(
       'div',
-      { class: 'lt-tools' },
-      el('span', { class: 'lt-rule', title: match.rule.description }, match.rule.id, match.rule.premium ? ' (premium)' : ''),
-      tools,
+      { class: 'lt-detail-more' },
+      el('button', { type: 'button', class: 'nx-action-btn-quiet nx-btn-sm', onclick: () => ignore(m) }, 'Ignore on this page'),
+      m.type === 'spelling' && state.canWrite
+        ? el('button', { type: 'button', class: 'nx-action-btn-quiet nx-btn-sm', onclick: () => addToDictionary(word).then(renderDetail) }, 'Add to site dictionary')
+        : null,
+    ),
+    el('h4', { class: 'lt-context-title' }, 'Context'),
+    el(
+      'div',
+      { class: 'lt-context' },
+      el('span', { class: 'lt-chip' }, TYPE_LABELS[m.type]),
+      el('p', {}, `${where}: “${start}${segment.text.trim().length > start.length ? '…' : ''}”`),
+      m.rule.description && m.rule.description !== m.message
+        ? el('p', { class: 'lt-rule' }, `${m.rule.description}${m.rule.premium ? ' (premium rule)' : ''}`)
+        : null,
+    ),
+    el(
+      'div',
+      { class: 'lt-paging lt-detail-paging' },
+      el('button', {
+        type: 'button', id: 'lt-detail-prev', class: 'lt-paging-btn prev', 'aria-label': 'Previous issue', disabled: detail.index === 0, onclick: () => moveDetail(-1),
+      }),
+      el('span', { class: 'lt-paging-label' }, `${detail.index + 1} of ${plural(total, `${TYPE_LABELS[m.type].toLowerCase()} issue`)}`),
+      el('button', {
+        type: 'button', id: 'lt-detail-next', class: 'lt-paging-btn next', 'aria-label': 'Next issue', disabled: detail.index >= total - 1, onclick: () => moveDetail(1),
+      }),
     ),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Results, like Preflight: counts by type, then a section per type
+// ---------------------------------------------------------------------------
+
+function itemRow(m, index) {
+  const pick = picked(m);
+  const desc = pick === undefined ? m.message : `Will change to “${phrase(m, pick).to}”`;
+  const title = titleOf(m);
+  return el(
+    'li',
+    { class: 'lt-item' },
+    toneIcon(pick === undefined ? 'negative' : 'positive'),
+    el('div', { class: 'lt-item-body' }, el('span', { class: 'lt-item-title' }, title), el('span', { class: 'lt-item-desc', title: desc }, desc)),
+    el('button', {
+      type: 'button',
+      class: 'lt-item-action',
+      'data-offset': String(m.offset),
+      'aria-label': `${m.suggestions.length ? 'View suggestions for' : 'View'} “${title}”`,
+      onclick: () => openDetail(m.type, index),
+    }, m.suggestions.length ? 'View suggestions' : 'View'),
+  );
+}
+
+function paging(type, page, end, total) {
+  const go = (step) => {
+    state.pages[type] = page + step;
+    // eslint-disable-next-line no-use-before-define
+    renderResults();
+    const next = $(`lt-${step < 0 ? 'prev' : 'next'}-${type}`);
+    (next.disabled ? $(`lt-${step < 0 ? 'next' : 'prev'}-${type}`) : next).focus();
+  };
+  return el(
+    'div',
+    { class: 'lt-paging' },
+    el('button', {
+      type: 'button', id: `lt-prev-${type}`, class: 'lt-paging-btn prev', 'aria-label': 'Previous issues', disabled: page === 0, onclick: () => go(-1),
+    }),
+    el('span', { class: 'lt-paging-label' }, `${end} of ${total} issues`),
+    el('button', {
+      type: 'button', id: `lt-next-${type}`, class: 'lt-paging-btn next', 'aria-label': 'Next issues', disabled: end >= total, onclick: () => go(1),
+    }),
+  );
+}
+
+function section({ type, matches: list }) {
+  const page = Math.min(state.pages[type] ?? 0, Math.floor((list.length - 1) / PAGE_SIZE));
+  const start = page * PAGE_SIZE;
+  const end = Math.min(start + PAGE_SIZE, list.length);
+  const details = el(
+    'details',
+    { class: 'lt-section', open: !state.closed.has(type) },
+    el(
+      'summary',
+      { class: 'lt-section-head' },
+      el('span', { class: 'lt-section-chip' }, toneIcon('negative')),
+      el('span', { class: 'lt-section-labels' }, el('span', { class: 'lt-section-label' }, TYPE_LABELS[type]), el('span', { class: 'lt-section-sublabel' }, plural(list.length, 'issue'))),
+      el('span', { class: 'lt-chevron', 'aria-hidden': 'true' }),
+    ),
+    el('ul', { class: 'lt-items' }, list.slice(start, end).map((m, i) => itemRow(m, start + i))),
+    list.length > PAGE_SIZE ? paging(type, page, end, list.length) : null,
+  );
+  details.addEventListener('toggle', () => {
+    if (details.open) state.closed.delete(type);
+    else state.closed.add(type);
+  });
+  return details;
 }
 
 function renderResults() {
@@ -396,27 +583,23 @@ function renderResults() {
   const where = selection ? 'in the selection' : 'on this page';
   $('results').hidden = false;
   $('results-title').textContent = matches.length
-    ? `${matches.length} ${matches.length === 1 ? 'issue' : 'issues'} ${where}`
+    ? `${plural(matches.length, 'issue')} ${where}`
     : `No issues ${where}`;
-  help('the results', $('results-row'), selection
-    ? ['Pick the fixes you want, then apply them to the selection.', 'Ignore hides an issue until you close the panel. Add to dictionary accepts a word for every author on this site.']
-    : ['To fix issues, select the text in the document and use Check selection. Clicking a suggestion here copies it.', 'Ignore hides an issue until you close the panel. Add to dictionary accepts a word for every author on this site.']);
+  help('the results', $('results-row'), [
+    selection
+      ? 'Open an issue and pick a fix. Then apply the fixes to the selection.'
+      : 'Open an issue to see what LanguageTool suggests. Copy the fix, ask the assistant to make it, or select the text in the document and use Check selection.',
+    'Ignore hides an issue until you close the panel. Add to site dictionary accepts a word for every author on this site.',
+  ]);
   const time = state.checkedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   $('results-meta').textContent = `${state.languageLabel} · checked at ${time}`;
-  $('counts').replaceChildren(...TYPES.map((t) => el('li', { class: t }, `${TYPE_LABELS[t]} `, el('strong', {}, String(counts[t])))));
-  $('counts').hidden = !matches.length;
-
-  const groups = groupBySegment(matches);
-  $('groups').replaceChildren(...groups.map(({ segment, matches: list }) => {
-    const start = segment.text.trim().split(/\s+/).slice(0, 5).join(' ');
-    const title = `${segment.kind === 'block' ? `${segment.label} block` : segment.label}: “${start}…”`;
-    return el(
-      'section',
-      { class: 'lt-group' },
-      el('h3', {}, title),
-      el('ul', { class: 'lt-matches' }, list.map(matchItem)),
-    );
-  }));
+  $('summary').replaceChildren(...TYPES.map((t) => el(
+    'div',
+    { class: 'lt-tile' },
+    el('span', { class: 'lt-tile-label' }, TYPE_LABELS[t]),
+    el('span', { class: `lt-tile-value ${counts[t] ? 'negative' : 'positive'}` }, String(counts[t])),
+  )));
+  $('sections').replaceChildren(...groupByType(matches).map(section));
 
   const fixes = [...state.accepted.values()];
   // The apply bar shows once a fix is picked, with the changed paragraphs as a preview.
@@ -427,7 +610,7 @@ function renderResults() {
     $('preview').textContent = buildDocument(applyReplacements(state.doc, fixes)).segments
       .map((s) => s.text).filter((t, i) => t !== before[i]).join('\n');
   }
-  $('assistant-row').hidden = selection || !matches.length || typeof state.actions.setPrompt !== 'function';
+  $('assistant-row').hidden = selection || !matches.length || !state.chat;
 }
 
 // ---------------------------------------------------------------------------
@@ -532,8 +715,9 @@ async function runCheck(mode) {
       language ??= result.language;
     }
 
+    const fresh = { accepted: new Map(), pages: {}, closed: new Set() };
     Object.assign(state, {
-      mode, doc, raw, html, checkedAt: new Date(), accepted: new Map(),
+      mode, doc, raw, html, checkedAt: new Date(), ...fresh,
     });
     state.languageLabel = state.settings.language === 'auto' && language?.detectedLanguage
       ? `${language.name} (detected)`
@@ -612,23 +796,41 @@ function wireKeyForm() {
     context: sdk.context, actions: sdk.actions, capabilities: sdk.capabilities,
   });
   const { org, repo } = sdk.context;
+  let siteConfig = null;
   try {
     const { config, canWrite } = await loadConfig(sdk.actions.daFetch, org, repo);
+    siteConfig = config;
     state.settings = parseSettings(config);
     state.canWrite = canWrite;
   } catch {
     state.settings = parseSettings(null);
     state.canWrite = false;
   }
+  // Workspace turns chat off with a flag in the org or site config.
+  const orgConfig = await sdk.actions.daFetch(`https://admin.da.live/config/${org}/`)
+    .then((resp) => (resp.ok ? resp.json() : null), () => null);
+  state.chat = typeof sdk.actions.setPrompt === 'function' && chatEnabled([orgConfig, siteConfig]);
   renderHead();
   wireKeyForm();
   help('checking', $('check-row'), [
-    'Check page lists the issues on the whole page. To fix them, select the text in the document and use Check selection.',
+    'Check page lists the issues on the whole page. Check selection checks the text you selected and can fix it in place.',
     'Checks only run when you click.',
   ]);
   $('check-page').addEventListener('click', () => runCheck('page'));
   $('check-selection').addEventListener('click', () => runCheck('selection'));
   $('apply').addEventListener('click', applyFixes);
   $('assistant').addEventListener('click', askAssistant);
+  const dialog = $('detail');
+  $('detail-close').addEventListener('click', () => dialog.close());
+  // A click outside the dialog panel lands on the dialog itself, like nx-dialog's backdrop.
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) dialog.close();
+  });
+  dialog.addEventListener('close', () => {
+    const row = document.querySelector(`.lt-item-action[data-offset="${state.detail?.offset}"]`);
+    state.detail = null;
+    $('detail-status').textContent = '';
+    (row || $('results-title')).focus();
+  });
   setStatus('');
 }());

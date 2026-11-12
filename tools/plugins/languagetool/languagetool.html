@@ -23,19 +23,13 @@
 
       <section class="lt-head">
         <div class="lt-title">
-          <div id="server-row" class="lt-row">
-            <p>Checks go to <strong id="server-name">…</strong></p>
+          <div id="check-row" class="lt-row">
+            <button type="button" id="check-page" class="nx-form-btn-primary" disabled>Check page</button>
+            <button type="button" id="check-selection" class="nx-form-btn-secondary" disabled>Check selection</button>
           </div>
           <span id="menu-slot"></span>
         </div>
         <div id="problem" class="lt-warn" hidden></div>
-      </section>
-
-      <section class="lt-check">
-        <div id="check-row" class="lt-row">
-          <button type="button" id="check-page" class="nx-form-btn-primary" disabled>Check page</button>
-          <button type="button" id="check-selection" class="nx-form-btn-secondary" disabled>Check selection</button>
-        </div>
         <div id="notice" class="lt-callout" hidden>
           <p id="notice-text"></p>
           <div class="lt-row">
@@ -68,20 +62,34 @@
           <h2 id="results-title" tabindex="-1"></h2>
         </div>
         <p id="results-meta" class="lt-meta"></p>
-        <ul id="counts" class="lt-counts"></ul>
+        <div id="summary" class="lt-summary"></div>
+        <div id="sections" class="lt-sections"></div>
         <div id="apply-bar" class="lt-apply" hidden>
           <p id="preview" class="lt-preview"></p>
           <button type="button" id="apply" class="nx-form-btn-primary">Apply fixes</button>
         </div>
-        <div id="groups"></div>
         <p id="assistant-row" hidden>
           <button type="button" id="assistant" class="nx-form-btn-secondary">Ask the assistant to fix these</button>
         </p>
       </section>
 
-      <footer class="lt-credit">
-        Powered by <a href="https://languagetool.org" target="_blank" rel="noopener">LanguageTool</a>
+      <footer class="lt-foot">
+        <div id="server-row" class="lt-row">
+          <p id="server-name">…</p>
+        </div>
+        <p>Powered by <a href="https://languagetool.org" target="_blank" rel="noopener">LanguageTool</a></p>
       </footer>
     </main>
+
+    <dialog id="detail" class="lt-dialog" aria-labelledby="detail-title">
+      <div class="lt-dialog-panel">
+        <h2 id="detail-title" class="lt-dialog-title"></h2>
+        <div id="detail-body" class="lt-dialog-body"></div>
+        <p id="detail-status" class="lt-detail-status" role="status"></p>
+        <div class="lt-dialog-actions">
+          <button type="button" id="detail-close" class="nx-form-btn-secondary">Close</button>
+        </div>
+      </div>
+    </dialog>
   </body>
 </html>
