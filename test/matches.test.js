@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildDocument, chunkItems } from '../tools/plugins/languagetool/lib/text.js';
 import {
-  classify, prepareMatches, groupBySegment, countByType, matchKey, context, assistantPrompt,
+  classify, prepareMatches, groupByType, countByType, matchKey, context, assistantPrompt,
+  phrase, fixPrompt,
 } from '../tools/plugins/languagetool/lib/matches.js';
 
 const rule = (id, issueType, category) => ({ id, issueType, category: { id: category } });
@@ -59,10 +60,14 @@ test('prepareMatches adds the chunk base to offsets', () => {
   assert.equal(m.offset, at('Ovinho'));
 });
 
-test('groupBySegment keeps document order; countByType counts each type', () => {
+test('groupByType lists types with issues in a fixed order; countByType counts each type', () => {
   const list = prepareMatches(doc, raw, 0, {});
-  const groups = groupBySegment(list);
-  assert.deepEqual(groups.map((g) => [g.segment.index, g.matches.length]), [[0, 2], [1, 2]]);
+  const groups = groupByType([...list].reverse());
+  assert.deepEqual(groups.map((g) => [g.type, g.matches.map((m) => m.word)]), [
+    ['spelling', ['Schamdan', 'Ovinho']],
+    ['grammar', ['zu']],
+    ['punctuation', [' .']],
+  ]);
   assert.deepEqual(countByType(list), {
     spelling: 2, grammar: 1, punctuation: 1, style: 0,
   });
@@ -104,4 +109,32 @@ test('assistantPrompt marks spots without a suggestion and caps the list at 40',
   const lines = assistantPrompt(many).split('\n');
   assert.equal(lines.filter((l) => /^\d+\. /.test(l)).length, 40);
   assert.ok(lines.includes('5 more are not listed. Check the page again after these fixes.'));
+});
+
+const spot = (text, word, from = text.indexOf(word)) => ({
+  segment: { text, kind: 'paragraph', label: 'Paragraph' }, start: from, end: from + word.length, word,
+});
+
+test('phrase shows a fix in whole words, with a neighbour word for spaces and punctuation', () => {
+  assert.deepEqual(phrase(spot('Das Team steht gerne zu Verfügung.', 'zu'), 'zur'), { from: 'zu', to: 'zur' });
+  // A dash between two words: "-" alone means nothing to an author.
+  const dash = spot('Das Schamdan in Marburg Weidenhausen bietet', ' ');
+  assert.deepEqual(phrase(dash, '-'), { from: 'Marburg Weidenhausen', to: 'Marburg-Weidenhausen' });
+  assert.deepEqual(phrase(spot('Wir freuen uns auf Ihren Besuch .', ' .'), '.'), { from: 'Besuch .', to: 'Besuch.' });
+  // A match inside a word grows to the whole word.
+  assert.deepEqual(phrase(spot('Ein kleiner Fehlr hier.', 'hlr'), 'hler'), { from: 'Fehlr', to: 'Fehler' });
+  assert.deepEqual(phrase(spot('Ruft uns an: 06421-25728', '06421-25728'), '06421 / 25728'), { from: '06421-25728', to: '06421 / 25728' });
+});
+
+test('fixPrompt asks the assistant for one change and names the paragraph, not LanguageTool', () => {
+  const m = { ...spot('Das Schamdan in Marburg Weidenhausen bietet Euch türkische Köstlichkeiten in Marburg an.', ' '), message: 'Möchten Sie …?' };
+  assert.equal(
+    fixPrompt(m, '-'),
+    'In the paragraph that starts with "Das Schamdan in Marburg Weidenhausen bietet Euch türkische", change "Marburg Weidenhausen" to "Marburg-Weidenhausen". Change nothing else.',
+  );
+  const block = { ...spot('Ruft uns an: 06421-25728', '06421-25728'), segment: { text: 'Ruft uns an: 06421-25728', kind: 'block', label: 'Columns' } };
+  assert.equal(
+    fixPrompt(block, '06421 / 25728'),
+    'In the Columns block that starts with "Ruft uns an: 06421-25728", change "06421-25728" to "06421 / 25728". Change nothing else.',
+  );
 });

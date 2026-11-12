@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULTS, parseSettings, resolveEndpoint, addWord, parseWords, serverLabel,
+  DEFAULTS, parseSettings, resolveEndpoint, addWord, parseWords, serverLabel, chatEnabled,
 } from '../tools/plugins/languagetool/lib/settings.js';
 
 const config = (rows, extra = {}) => ({
@@ -108,14 +108,23 @@ test('addWord turns a single-sheet config into a multi-sheet one', () => {
   assert.deepEqual(after.data.data, [{ key: 'a', value: 'b' }]);
 });
 
-test('serverLabel says where checks go, also when a personal key overrides the site setting', () => {
+test('serverLabel says which server the panel uses, also when a personal key overrides the site setting', () => {
   const site = (server) => ({ ...DEFAULTS, server });
   const key = { username: 'a@b.c', apiKey: 'k' };
   const label = (s, c) => serverLabel(s, resolveEndpoint(s, c));
-  assert.equal(label(site('free'), null), 'LanguageTool free API');
-  assert.equal(label(site('free'), key), 'LanguageTool Premium, with your key');
-  assert.equal(label(site('premium'), key), 'LanguageTool Premium, with your key');
-  assert.equal(label(site('premium'), null), 'LanguageTool Premium, once you add your key');
-  assert.equal(label(site('https://lt.example.com'), key), "lt.example.com, this site's own server");
-  assert.equal(label(site('nonsense'), null), 'no valid server in the site settings');
+  assert.equal(label(site('free'), null), 'Using LanguageTool free API');
+  assert.equal(label(site('free'), key), 'Using LanguageTool Premium, with your key');
+  assert.equal(label(site('premium'), key), 'Using LanguageTool Premium, with your key');
+  assert.equal(label(site('premium'), null), 'Using LanguageTool Premium, once you add your key');
+  assert.equal(label(site('https://lt.example.com'), key), "Using lt.example.com, this site's own server");
+  assert.equal(label(site('nonsense'), null), 'No valid LanguageTool server in the site settings');
+});
+
+test('chatEnabled follows the ew.disableChat flag; the site config overrides the org config', () => {
+  const flags = (value) => ({ flags: { data: [{ key: 'ew.disableChat', value }] }, ':type': 'multi-sheet' });
+  assert.equal(chatEnabled([null, null]), true);
+  assert.equal(chatEnabled([flags('true'), null]), false);
+  assert.equal(chatEnabled([null, flags('true')]), false);
+  assert.equal(chatEnabled([flags('true'), flags('false')]), true);
+  assert.equal(chatEnabled([{ ':sheetname': 'flags', data: [{ key: 'ew.disableChat', value: 'true' }] }]), false);
 });
