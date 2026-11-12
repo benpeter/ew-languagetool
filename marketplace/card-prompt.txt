@@ -1,0 +1,13 @@
+Create a simple, clean flat-vector illustration for a software app marketplace thumbnail, 4:3 landscape aspect ratio.
+
+Subject: one web page getting proofread and fixed. On the left, a single web page card with a headline placeholder bar and four plain text-line bars. Two of the text-line bars carry a short, soft wavy underline in coral, marking a spelling or grammar issue. On the right, a large rounded square tile with a bold check mark. Below the tile, one plain text-line bar in teal with a smooth straight underline, standing for the corrected line. A single soft arrow connects the page card to the tile and bar. That is all: only two groups of elements, nothing else.
+
+Composition: minimal and calm, one clear central concept with a focal point slightly above center, lots of empty space around the elements. The check mark tile is the hero element. Keep all elements well away from the edges so nothing is lost when cropped by rounded card corners.
+
+Style: modern, clean flat design with no isometric perspective. Very few simple geometric shapes, rounded corners, no outlines, soft subtle gradients, gentle drop shadows for depth. Looks like a polished, uncluttered enterprise SaaS illustration.
+
+Color: muted pastel tones combined with deeper, rich-but-not-dark tones. Dominant hue is purple, with soft coral and teal as supporting accents; the wavy underlines are coral, the check mark and the corrected bar are teal. Background is a soft pastel purple tint with a subtle gradient, no pure white and no near-black.
+
+Text: no text at all. No letters, no words, no numbers, no captions. All text areas are represented by plain bars and shapes. No logos of any kind, no real brand marks, no watermarks.
+
+Avoid: any text or lettering, ABC symbols, photorealism, people or faces, hands, stock-photo look, heavy 3D, neon colors, dark or black backgrounds, clutter, busy patterns, gears, clouds, multiple arrows, small badges, extra icons, magnifying glasses, pens or pencils, red error crosses, real company or product logos, recognizable brand icons.
