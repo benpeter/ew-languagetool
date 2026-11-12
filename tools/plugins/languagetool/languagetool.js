@@ -182,8 +182,9 @@ function removeKey() {
 }
 
 const configUrl = () => `https://da.live/config#/${state.context.org}/${state.context.repo}/`;
+const GUIDE_URL = 'https://github.com/benpeter/ew-languagetool/blob/main/docs/authors.md';
 
-// Adding or removing the key and the site settings are rare, so they sit in a menu.
+// Adding or removing the key, the site settings and the guide are rare, so they sit in a menu.
 function renderMenu() {
   const items = [credentials()
     ? { id: 'remove-key', label: 'Remove premium key', description: 'Only from this browser.' }
@@ -191,10 +192,12 @@ function renderMenu() {
   if (state.canWrite) {
     items.push({ id: 'site-settings', label: 'Site settings', description: 'Server, language and site dictionary, in a new tab.' });
   }
+  items.push({ id: 'guide', label: 'Author guide', description: 'How to use this panel, in a new tab.' });
   const run = (id) => {
     if (id === 'add-key') showKeyForm();
     if (id === 'remove-key') removeKey();
     if (id === 'site-settings') window.open(configUrl(), '_blank', 'noopener');
+    if (id === 'guide') window.open(GUIDE_URL, '_blank', 'noopener');
   };
   // Update the open menu in place: replacing it while it closes throws in nx-menu.
   if (ui.menu) {
