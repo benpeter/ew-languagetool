@@ -4,7 +4,7 @@ import loadSharedUi from './shared-ui.js';
 import { buildDocument, chunkItems, applyReplacements } from './lib/text.js';
 import {
   TYPES, prepareMatches, groupByType, countByType, matchKey, context, assistantPrompt, phrase,
-  fixPrompt,
+  fixPrompt, segmentStart,
 } from './lib/matches.js';
 import {
   parseSettings, resolveEndpoint, addWord, serverLabel, chatEnabled,
@@ -70,19 +70,17 @@ function icon(name) {
   return svg;
 }
 
-// Problems and progress stay in the panel; confirmations go to DA's toast when it loaded.
+// Problems and progress stay in the panel, or in the issue dialog while it is open (the
+// modal hides the panel). Confirmations go to DA's toast when it loaded.
 function setStatus(text, kind = '') {
-  const status = $('status');
+  const inDialog = $('detail').open;
+  const status = $(inDialog ? 'detail-status' : 'status');
   status.textContent = text;
-  status.className = `lt-status ${kind}`;
+  status.className = `${inDialog ? 'lt-detail-status' : 'lt-status'} ${kind}`;
 }
 
 function notify(text) {
-  if ($('detail').open) {
-    $('detail-status').textContent = text;
-    return;
-  }
-  if (typeof ui.showToast !== 'function') {
+  if ($('detail').open || typeof ui.showToast !== 'function') {
     setStatus(text, 'ok');
     return;
   }
@@ -312,7 +310,10 @@ async function addToDictionary(word) {
     setStatus('');
     // eslint-disable-next-line no-use-before-define
     renderResults();
+    // eslint-disable-next-line no-use-before-define
+    renderDetail();
     notify(`Added “${word}” to the site dictionary.`);
+    if ($('detail').open) $('detail-body').querySelector('.lt-detail-more button')?.focus();
   } catch {
     setStatus(`Could not save the site dictionary. Use Ignore instead, or ask a site admin to add “${word}”.`, 'error');
   } finally {
@@ -344,21 +345,33 @@ function detailList() {
   return groupByType(currentMatches()).find((g) => g.type === state.detail.type)?.matches || [];
 }
 
+// choice null: show the picked fix, or the first suggestion.
 function openDetail(type, index) {
-  state.detail = { type, index, choice: 0 };
+  state.detail = { type, index, choice: null };
   // eslint-disable-next-line no-use-before-define
   renderDetail();
   if (state.detail && !$('detail').open) $('detail').showModal();
 }
 
-function moveDetail(step) {
-  state.detail.index += step;
-  state.detail.choice = 0;
-  $('detail-status').textContent = '';
-  // eslint-disable-next-line no-use-before-define
-  renderDetail();
-  const next = $(step < 0 ? 'lt-detail-prev' : 'lt-detail-next');
-  (next.disabled ? $(step < 0 ? 'lt-detail-next' : 'lt-detail-prev') : next).focus();
+/** Previous and next arrows; after a move, focus stays on an arrow that still works. */
+function pager({
+  id, label, atStart, atEnd, noun, onMove,
+}) {
+  const move = (step) => {
+    onMove(step);
+    const next = $(`${id}-${step < 0 ? 'prev' : 'next'}`);
+    (next.disabled ? $(`${id}-${step < 0 ? 'next' : 'prev'}`) : next).focus();
+  };
+  const arrow = (dir, step, disabled) => el('button', {
+    type: 'button', id: `${id}-${dir}`, class: `lt-paging-btn ${dir}`, 'aria-label': `${dir === 'prev' ? 'Previous' : 'Next'} ${noun}`, disabled, onclick: () => move(step),
+  });
+  return el(
+    'div',
+    { class: 'lt-paging' },
+    arrow('prev', -1, atStart),
+    el('span', { class: 'lt-paging-label' }, label),
+    arrow('next', 1, atEnd),
+  );
 }
 
 async function copy(text) {
@@ -366,14 +379,17 @@ async function copy(text) {
     await navigator.clipboard.writeText(text);
     notify(`Copied “${text}”.`);
   } catch {
-    notify('Could not copy. Select the text in the document and use Check selection to fix it.');
+    setStatus('Could not copy. Select the text in the document and use Check selection to fix it.', 'error');
   }
 }
 
+// Long spots are sent for review, not straight away: the prompt could carry more than a fix.
 function toChat(m, value, autoSend) {
-  state.actions.setPrompt(fixPrompt(m, value), { autoSend });
+  const { from, to } = phrase(m, value);
+  const send = autoSend && from.length <= 80 && to.length <= 80;
+  state.actions.setPrompt(fixPrompt(m, value), { autoSend: send });
   $('detail').close();
-  notify(autoSend
+  notify(send
     ? 'Asked the assistant to make this change.'
     : 'Added the change to the assistant. Review the prompt before you send it.');
 }
@@ -384,14 +400,14 @@ function ignore(m) {
   renderResults();
   // eslint-disable-next-line no-use-before-define
   renderDetail();
-  notify(`Ignoring “${m.word.trim()}” until you close the panel.`);
-  $('detail-body').querySelector('.lt-detail-more button')?.focus();
+  notify(`Ignoring “${titleOf(m)}” until you close the panel.`);
+  if ($('detail').open) $('detail-body').querySelector('.lt-detail-more button')?.focus();
 }
 
 const heading = (kind, text) => el(
   'div',
   { class: 'lt-detail-heading' },
-  el('span', { class: `lt-tone ${kind === 'issue' ? 'negative' : 'positive'}`, 'aria-hidden': 'true' }),
+  toneIcon(kind === 'issue' ? 'negative' : 'positive'),
   el('h4', {}, text),
 );
 
@@ -422,6 +438,7 @@ function fixActions(m) {
     const on = picked(m) === value;
     return el('div', { class: 'lt-detail-actions' }, el('button', {
       type: 'button',
+      id: 'lt-use-fix',
       class: on ? 'nx-action-btn nx-btn-sm' : 'nx-btn-accent nx-btn-sm',
       onclick: () => {
         toggleSuggestion(m, value);
@@ -429,13 +446,15 @@ function fixActions(m) {
         renderDetail();
         $('lt-use-fix').focus();
       },
-      id: 'lt-use-fix',
     }, on ? 'Don’t use this fix' : 'Use this fix'));
   }
+  const { to } = phrase(m, value);
   return el(
     'div',
     { class: 'lt-detail-actions' },
-    el('button', { type: 'button', class: 'lt-copy', onclick: () => copy(phrase(m, value).to) }, icon('s2-icon-copy-20-n'), 'Copy suggestion'),
+    to.trim()
+      ? el('button', { type: 'button', class: 'lt-copy', onclick: () => copy(to) }, icon('s2-icon-copy-20-n'), 'Copy suggestion')
+      : null,
     state.chat ? el(
       'div',
       { class: 'lt-chat-actions' },
@@ -455,13 +474,9 @@ function renderDetail() {
   const { detail } = state;
   detail.index = Math.max(0, Math.min(detail.index, list.length - 1));
   const m = list[detail.index];
-  detail.offset = m.offset;
+  if (detail.choice === null) detail.choice = Math.max(0, m.suggestions.indexOf(picked(m)));
   detail.choice = Math.min(detail.choice, Math.max(0, m.suggestions.length - 1));
-  const word = m.word.trim();
-  const { segment } = m;
-  const where = segment.kind === 'block' ? `${segment.label} block` : segment.label;
-  const start = segment.text.trim().split(/\s+/).slice(0, 8).join(' ');
-  const total = list.length;
+  const { where, start, more } = segmentStart(m.segment);
   $('detail-title').textContent = TYPE_LABELS[m.type];
   $('detail-body').replaceChildren(
     el('h3', { class: 'lt-asset' }, titleOf(m)),
@@ -481,7 +496,7 @@ function renderDetail() {
       { class: 'lt-detail-more' },
       el('button', { type: 'button', class: 'nx-action-btn-quiet nx-btn-sm', onclick: () => ignore(m) }, 'Ignore on this page'),
       m.type === 'spelling' && state.canWrite
-        ? el('button', { type: 'button', class: 'nx-action-btn-quiet nx-btn-sm', onclick: () => addToDictionary(word).then(renderDetail) }, 'Add to site dictionary')
+        ? el('button', { type: 'button', class: 'nx-action-btn-quiet nx-btn-sm', onclick: () => addToDictionary(m.word.trim()) }, 'Add to site dictionary')
         : null,
     ),
     el('h4', { class: 'lt-context-title' }, 'Context'),
@@ -489,22 +504,24 @@ function renderDetail() {
       'div',
       { class: 'lt-context' },
       el('span', { class: 'lt-chip' }, TYPE_LABELS[m.type]),
-      el('p', {}, `${where}: “${start}${segment.text.trim().length > start.length ? '…' : ''}”`),
+      el('p', {}, `${where}: “${start}${more ? '…' : ''}”`),
       m.rule.description && m.rule.description !== m.message
         ? el('p', { class: 'lt-rule' }, `${m.rule.description}${m.rule.premium ? ' (premium rule)' : ''}`)
         : null,
     ),
-    el(
-      'div',
-      { class: 'lt-paging lt-detail-paging' },
-      el('button', {
-        type: 'button', id: 'lt-detail-prev', class: 'lt-paging-btn prev', 'aria-label': 'Previous issue', disabled: detail.index === 0, onclick: () => moveDetail(-1),
-      }),
-      el('span', { class: 'lt-paging-label' }, `${detail.index + 1} of ${plural(total, `${TYPE_LABELS[m.type].toLowerCase()} issue`)}`),
-      el('button', {
-        type: 'button', id: 'lt-detail-next', class: 'lt-paging-btn next', 'aria-label': 'Next issue', disabled: detail.index >= total - 1, onclick: () => moveDetail(1),
-      }),
-    ),
+    pager({
+      id: 'lt-detail',
+      noun: 'issue',
+      label: `${detail.index + 1} of ${plural(list.length, `${TYPE_LABELS[m.type].toLowerCase()} issue`)}`,
+      atStart: detail.index === 0,
+      atEnd: detail.index >= list.length - 1,
+      onMove: (step) => {
+        detail.index += step;
+        detail.choice = null;
+        $('detail-status').textContent = '';
+        renderDetail();
+      },
+    }),
   );
 }
 
@@ -524,31 +541,10 @@ function itemRow(m, index) {
     el('button', {
       type: 'button',
       class: 'lt-item-action',
-      'data-offset': String(m.offset),
+      'data-key': `${m.type}:${index}`,
       'aria-label': `${m.suggestions.length ? 'View suggestions for' : 'View'} “${title}”`,
       onclick: () => openDetail(m.type, index),
     }, m.suggestions.length ? 'View suggestions' : 'View'),
-  );
-}
-
-function paging(type, page, end, total) {
-  const go = (step) => {
-    state.pages[type] = page + step;
-    // eslint-disable-next-line no-use-before-define
-    renderResults();
-    const next = $(`lt-${step < 0 ? 'prev' : 'next'}-${type}`);
-    (next.disabled ? $(`lt-${step < 0 ? 'next' : 'prev'}-${type}`) : next).focus();
-  };
-  return el(
-    'div',
-    { class: 'lt-paging' },
-    el('button', {
-      type: 'button', id: `lt-prev-${type}`, class: 'lt-paging-btn prev', 'aria-label': 'Previous issues', disabled: page === 0, onclick: () => go(-1),
-    }),
-    el('span', { class: 'lt-paging-label' }, `${end} of ${total} issues`),
-    el('button', {
-      type: 'button', id: `lt-next-${type}`, class: 'lt-paging-btn next', 'aria-label': 'Next issues', disabled: end >= total, onclick: () => go(1),
-    }),
   );
 }
 
@@ -567,7 +563,18 @@ function section({ type, matches: list }) {
       el('span', { class: 'lt-chevron', 'aria-hidden': 'true' }),
     ),
     el('ul', { class: 'lt-items' }, list.slice(start, end).map((m, i) => itemRow(m, start + i))),
-    list.length > PAGE_SIZE ? paging(type, page, end, list.length) : null,
+    list.length > PAGE_SIZE ? pager({
+      id: `lt-${type}`,
+      noun: 'issues',
+      label: `${end} of ${list.length} issues`,
+      atStart: page === 0,
+      atEnd: end >= list.length,
+      onMove: (step) => {
+        state.pages[type] = page + step;
+        // eslint-disable-next-line no-use-before-define
+        renderResults();
+      },
+    }) : null,
   );
   details.addEventListener('toggle', () => {
     if (details.open) state.closed.delete(type);
@@ -796,20 +803,15 @@ function wireKeyForm() {
     context: sdk.context, actions: sdk.actions, capabilities: sdk.capabilities,
   });
   const { org, repo } = sdk.context;
-  let siteConfig = null;
-  try {
-    const { config, canWrite } = await loadConfig(sdk.actions.daFetch, org, repo);
-    siteConfig = config;
-    state.settings = parseSettings(config);
-    state.canWrite = canWrite;
-  } catch {
-    state.settings = parseSettings(null);
-    state.canWrite = false;
-  }
   // Workspace turns chat off with a flag in the org or site config.
-  const orgConfig = await sdk.actions.daFetch(`https://admin.da.live/config/${org}/`)
-    .then((resp) => (resp.ok ? resp.json() : null), () => null);
-  state.chat = typeof sdk.actions.setPrompt === 'function' && chatEnabled([orgConfig, siteConfig]);
+  const [site, orgConfig] = await Promise.all([
+    loadConfig(sdk.actions.daFetch, org, repo).catch(() => ({ config: null, canWrite: false })),
+    sdk.actions.daFetch(`https://admin.da.live/config/${org}/`)
+      .then((resp) => (resp.ok ? resp.json() : null), () => null),
+  ]);
+  state.settings = parseSettings(site.config);
+  state.canWrite = site.canWrite;
+  state.chat = typeof sdk.actions.setPrompt === 'function' && chatEnabled([orgConfig, site.config]);
   renderHead();
   wireKeyForm();
   help('checking', $('check-row'), [
@@ -823,14 +825,21 @@ function wireKeyForm() {
   const dialog = $('detail');
   $('detail-close').addEventListener('click', () => dialog.close());
   // A click outside the dialog panel lands on the dialog itself, like nx-dialog's backdrop.
+  // A text selection that ends there doesn't count.
+  let pressed;
+  dialog.addEventListener('mousedown', (e) => { pressed = e.target; });
   dialog.addEventListener('click', (e) => {
-    if (e.target === dialog) dialog.close();
+    if (e.target === dialog && pressed === dialog) dialog.close();
   });
   dialog.addEventListener('close', () => {
-    const row = document.querySelector(`.lt-item-action[data-offset="${state.detail?.offset}"]`);
+    const { type, index } = state.detail || {};
     state.detail = null;
     $('detail-status').textContent = '';
-    (row || $('results-title')).focus();
+    if (type) {
+      state.pages[type] = Math.floor(index / PAGE_SIZE);
+      renderResults();
+    }
+    (document.querySelector(`.lt-item-action[data-key="${type}:${index}"]`) || $('results-title')).focus();
   });
   setStatus('');
 }());

@@ -88,7 +88,7 @@ export function serverLabel(settings, endpoint) {
 }
 
 /**
- * Whether Workspace chat is on, as Workspace decides it (da-nx isEwChatEnabled):
+ * Whether Workspace chat is on, as Workspace decides it (da-nx isEwChatDisabled):
  * the ew.disableChat flag of the org config, then of the site config.
  * @param {object[]} configs org config first, then site config; null when missing
  */

@@ -112,34 +112,65 @@ export function assistantPrompt(matches) {
   ].join('\n');
 }
 
-const WORD = /[\p{L}\p{N}]/u;
+const WORD = /[\p{L}\p{M}\p{N}]/u;
 const isWord = (ch) => !!ch && WORD.test(ch);
 
 /**
- * The flagged spot and its fix in whole words, so "-" reads as "Marburg-Weidenhausen".
- * A match of only spaces or punctuation also takes the words that touch it.
+ * Where the flagged spot starts and ends in whole words.
+ * A spot of only spaces or punctuation also takes the words that touch it.
  */
-export function phrase(match, value) {
+function span(match) {
   const { text } = match.segment;
-  let from = match.start;
-  let to = match.end;
-  while (from > 0 && isWord(text[from - 1]) && isWord(text[from])) from -= 1;
-  while (to < text.length && isWord(text[to]) && isWord(text[to - 1])) to += 1;
-  if (![...text.slice(from, to)].some(isWord)) {
-    while (from > 0 && /\S/.test(text[from - 1])) from -= 1;
-    while (to < text.length && /\S/.test(text[to])) to += 1;
+  let { start, end } = match;
+  while (start > 0 && isWord(text[start - 1]) && isWord(text[start])) start -= 1;
+  while (end < text.length && isWord(text[end]) && isWord(text[end - 1])) end += 1;
+  if (![...text.slice(start, end)].some(isWord)) {
+    while (start > 0 && /\S/.test(text[start - 1])) start -= 1;
+    while (end < text.length && /\S/.test(text[end])) end += 1;
   }
+  return { start, end };
+}
+
+const fixed = (match, { start, end }, value) => {
+  const { text } = match.segment;
   return {
-    from: text.slice(from, to),
-    to: `${text.slice(from, match.start)}${value}${text.slice(match.end, to)}`,
+    from: text.slice(start, end),
+    to: `${text.slice(start, match.start)}${value}${text.slice(match.end, end)}`,
+  };
+};
+
+/** The flagged spot and its fix in whole words, so "-" reads as "Marburg-Weidenhausen". */
+export const phrase = (match, value) => fixed(match, span(match), value);
+
+/** How the dialog and the assistant prompt name a paragraph or block. */
+export function segmentStart(segment) {
+  const words = segment.text.trim().split(/\s+/);
+  return {
+    where: segment.kind === 'block' ? `${segment.label} block` : segment.label,
+    start: words.slice(0, 8).join(' '),
+    more: words.length > 8,
   };
 }
 
-/** A prompt for the Workspace assistant to make one fix. */
+/**
+ * A prompt for the Workspace assistant to make one fix.
+ * Values are JSON strings, so quotes in them stay quotes.
+ */
 export function fixPrompt(match, value) {
   const { segment } = match;
-  const where = segment.kind === 'block' ? `${segment.label} block` : segment.label.toLowerCase();
-  const start = segment.text.trim().split(/\s+/).slice(0, 8).join(' ');
-  const { from, to } = phrase(match, value);
-  return `In the ${where} that starts with "${start}", change "${from}" to "${to}". Change nothing else.`;
+  const { text } = segment;
+  const bounds = span(match);
+  // Neighbour words make the spot unique in its paragraph, so the assistant changes the right one.
+  for (let i = 0; i < 3 && text.split(text.slice(bounds.start, bounds.end)).length > 2; i += 1) {
+    while (bounds.start > 0 && /\s/.test(text[bounds.start - 1])) bounds.start -= 1;
+    while (bounds.start > 0 && /\S/.test(text[bounds.start - 1])) bounds.start -= 1;
+    while (bounds.end < text.length && /\s/.test(text[bounds.end])) bounds.end += 1;
+    while (bounds.end < text.length && /\S/.test(text[bounds.end])) bounds.end += 1;
+  }
+  const { from, to } = fixed(match, bounds, value);
+  const { where, start } = segmentStart(segment);
+  const q = JSON.stringify;
+  const change = to.trim() ? `change ${q(from)} to ${q(to)}` : `delete ${q(from)}`;
+  const name = segment.kind === 'block' ? where : where.toLowerCase();
+  return `In the ${name} that starts with ${q(start)}, ${change}. Change nothing else.`;
 }
