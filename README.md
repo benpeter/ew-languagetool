@@ -192,11 +192,6 @@ with path `/tools/plugins/languagetool/languagetool.html` and ref `local`, run
 `aem up`, and open Workspace with `?ref=local`. Workspace loads paths that start with
 `/` from `http://localhost:3000` for `local` rows.
 
-`marketplace/card.png` (1200x896, the size of the other marketplace images) is an
-illustration made with Adobe Firefly (Gemini 3.1 model, 4:3, 2K). The prompt is in
-`marketplace/card-prompt.txt`. The generated image has white rounded corners; crop
-about 5% from each side before scaling it to 1200x896.
-
 ## Licenses
 
 Apache-2.0, see [LICENSE](LICENSE). The icons in `tools/plugins/languagetool/img/`
