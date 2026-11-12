@@ -95,7 +95,7 @@ Premium finds more issues and checks longer texts.
    LanguageTool page where you make one.
 3. Choose **Save key**.
 
-![The ⋯ menu with Add premium key](img/premium-key.png)
+![The ⋯ menu with Add premium key, Site settings and Author guide](img/panel-menu.png)
 
 The key stays in this browser and goes only to LanguageTool Premium. The line at the
 bottom then says "Using LanguageTool Premium, with your key". To remove the key,
@@ -107,6 +107,7 @@ choose **⋯** > **Remove premium key**. On another computer or browser, add it 
 - Results don't change while you edit. Check again after you change the page.
 - Page metadata isn't checked.
 - The (i) buttons tell you more: next to the check buttons, next to the result
-  heading, and next to the "Using" line at the bottom.
+  heading, and next to the "Using" line at the bottom. **⋯** > **Author guide** opens
+  this guide.
 - The free server allows about 20 checks a minute per network. If the panel says the
   limit was reached, wait a minute.

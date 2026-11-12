@@ -2,16 +2,22 @@
 
 A plugin for [Adobe Experience Workspace](https://da.live) (DA). Authors use it to
 proofread the page they are editing: it checks spelling, grammar, punctuation and
-style in more than 30 languages and lists what it finds next to the page. Authors
-can fix a selection in place, hand a fix to the Workspace assistant, and keep brand
-names in a site dictionary.
+style in more than 30 languages and lists what it finds next to the page.
+
+![The LanguageTool panel in Workspace, next to a page, with issues counted by type](docs/img/panel.png)
+
+On sites with Workspace chat, it works with the assistant. On an issue, **Add to
+chat** puts the exact change into the assistant's prompt, and **Apply change** asks
+the assistant to make it. **Ask the assistant to fix these** hands over the whole list
+at once. Authors can also fix a selection in place without the assistant, and keep
+brand names in a site dictionary.
+
+![One issue opened: LanguageTool's explanation, the sentence with the fix, and Add to chat and Apply change for the Workspace assistant](docs/img/suggestion.png)
 
 The checks come from [LanguageTool](https://languagetool.org). A site can use
 LanguageTool's free API, each author's own Premium account, or its own LanguageTool
 server. This plugin is not made or endorsed by LanguageTooler GmbH, the company
 behind LanguageTool.
-
-![The LanguageTool panel in Workspace, next to a page, with issues counted by type](docs/img/panel.png)
 
 This README is for site admins who want to add the plugin to a site. For how to use
 it, see the [author guide](docs/authors.md).
@@ -161,17 +167,6 @@ it.
 | "The selection changed since the check" | Check the selection again, then apply. |
 | "LanguageTool did not accept your premium key" (HTTP 401/403) | Remove the key in the **⋯** menu and add it again. |
 | **Add to site dictionary** is missing | The author can't change the site config. Use **Ignore on this page**, or ask an admin to add the word to `words`. |
-
-## Marketplace
-
-The [Workspace marketplace](https://da.live/marketplace) lists extensions with a
-short description and a link to their docs. A listing installs nothing: each site
-still needs the library row above.
-
-`marketplace/row.json` has the values for a listing (title, description, owner,
-logo, card image), in the columns of the marketplace list. Adobe maintains the list,
-and all current entries are Adobe's own. There is no public way to submit an entry
-yet; ask the Experience Workspace team.
 
 ## Develop
 
